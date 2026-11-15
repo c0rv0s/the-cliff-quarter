@@ -12,6 +12,11 @@ namespace TinyWorld
         public float walkSpeed = 5.6f, sprintSpeed = 10.2f, jumpHeight = 2.5f;
         public float wallRunSpeed = 10.5f, wallRunDuration = 1.65f, swimSpeed = 5.5f;
         public Material ropeMaterial;
+        [Header("Glider")]
+        public float glideSpeed = 9.5f, glideDiveSpeed = 15, glideSink = 2.4f, glideDiveSink = 6.5f, glideTurnRate = 2.2f, glideClearance = 3;
+        public bool Gliding { get; private set; }
+        public int Glides { get; private set; }
+        public Glider Glider { get; private set; }
         public bool ControlsEnabled { get; set; }
         public bool Grounded { get; private set; }
         public bool Traversing { get; private set; }
@@ -80,6 +85,7 @@ namespace TinyWorld
             body.excludeLayers=1<<8;
             checkpoint = transform.position;
             Hand=GetComponent<StickyHand>();if(!Hand)Hand=gameObject.AddComponent<StickyHand>();
+            Glider=GetComponent<Glider>();if(!Glider)Glider=gameObject.AddComponent<Glider>();
             var go = new GameObject("Swing tether"); go.transform.SetParent(transform, false);
             rope = go.AddComponent<LineRenderer>(); rope.positionCount = 2;
             rope.startWidth = rope.endWidth = .035f; rope.numCapVertices = 3;
@@ -146,6 +152,7 @@ namespace TinyWorld
             var forward = yaw * Vector3.forward;
             var direction = yaw * new Vector3(input.x, 0, input.y);
             buffer = jump ? .16f : buffer - dt;
+            if (Gliding && (Traversing || Leaping || Hand.Attached || Hanging || vine || Swinging)) SetGliding(false);
             if (Traversing) { AdvanceTraverse(dt); return; }
             if (Leaping) { AdvanceLeap(dt); return; }
             if(Hand.Attached){vine=null;Hanging=cornering=false;anchor=null;GrappleStep(direction,jump,drop,dt);return;}
@@ -157,14 +164,14 @@ namespace TinyWorld
             if (submerged)
             {
                 if (!Swimming) { feedback?.Splash(); Log("Swim"); }
-                Swimming = true; grappleFlight=false; WallRunning = false; anchor = null; dashTime = 0;
+                SetGliding(false); Swimming = true; grappleFlight=false; WallRunning = false; anchor = null; dashTime = 0;
                 SwimStep(direction, sprint, jump, held, drop||manualCrouch, dt); return;
             }
             Swimming = false;
             Grounded = body.isGrounded;
             if (Grounded)
             {
-                grappleFlight=false;
+                grappleFlight=false; SetGliding(false);
                 coyote = .13f; wallTime = 0; airDash = false;
             }
             else coyote -= dt;
@@ -172,15 +179,16 @@ namespace TinyWorld
             Hint = Hand.Notice.Length>0?Hand.Notice:candidate ? "Hold E · swing" : Crouched?"Crouched · release Ctrl to stand when clear":"";
             if (Swinging) { SwingStep(direction, jump, swing, dt); wasGrounded = false; return; }
             if (swing && !swingNeedsRelease && candidate && !Grounded) { BeginSwing(candidate); SwingStep(direction, false, true, dt); return; }
-            if (direction.sqrMagnitude > .01f) Face(direction, dt);
+            if (!Gliding && direction.sqrMagnitude > .01f) Face(direction, dt);
             if (!drop && grabLock <= 0 && direction.sqrMagnitude > .1f)
             {
                 // Free-running: sprinting into an obstacle vaults or mantles without a jump press.
                 if (Grounded && (buffer > 0 || (sprint && Speed > walkSpeed * .85f)) && TryTraverse(direction.normalized, buffer <= 0)) return;
                 if (!Grounded && (velocity.y < 5 || WallRunning) && TryGrab(direction.normalized)) return;
             }
+            if (Gliding && (jump || drop || manualCrouch)) { SetGliding(false); jump = false; buffer = 0; }
             RaycastHit wall = default;
-            bool foundWall = !Grounded && wallLock <= 0 && ProbeWall(direction.sqrMagnitude > .1f ? direction.normalized : visual.forward, out wall);
+            bool foundWall = !Grounded && !Gliding && wallLock <= 0 && ProbeWall(direction.sqrMagnitude > .1f ? direction.normalized : visual.forward, out wall);
             if (foundWall && jump && coyote<=0 && Vector3.Dot(direction,wall.normal)>.35f)
             {
                 WallNormal = wall.normal;
@@ -193,11 +201,11 @@ namespace TinyWorld
             else if(foundWall && jump && Vector3.Dot(direction,wall.normal)<-.25f && wallTime<wallRunDuration)
             {
                 velocity=Vector3.ProjectOnPlane(velocity,wall.normal);velocity.y=Mathf.Max(velocity.y,7.5f);
-                wallTime+=.5f;buffer=0;feedback?.Climb();
+                wallTime+=.5f;buffer=0;feedback?.Grab();
             }
             else if (foundWall && sprint && direction.sqrMagnitude > .1f && wallTime < wallRunDuration && velocity.y > -18)
             {
-                if (!WallRunning) { WallRuns++; feedback?.Climb(); Log("Wall run"); }
+                if (!WallRunning) { WallRuns++; feedback?.WallRun(); Log("Wall run"); }
                 WallRunning = true; WallNormal = wall.normal; wallTime += dt; airDash = false;
                 var along = Vector3.ProjectOnPlane(direction, wall.normal); along.y = 0;
                 bool upWall = along.magnitude < .35f;
@@ -209,18 +217,22 @@ namespace TinyWorld
                 if ((body.Move(velocity * dt) & CollisionFlags.Above) != 0) { WallRunning = false; wallTime = wallRunDuration; velocity = wall.normal * .4f; }
                 wasGrounded = false; return;
             }
+            // A buffered Space in open air, falling or near the apex, opens the glider.
+            else if (buffer > 0 && !Gliding && coyote <= 0 && velocity.y < 3 && dashTime <= 0 && GlideRoom()) { WallRunning = false; buffer = 0; SetGliding(true); }
             else WallRunning = false;
             if (dash && !Grounded && !airDash)
             {
+                SetGliding(false);
                 dashDirection = (direction.sqrMagnitude > .1f ? direction.normalized : forward);
-                dashTime = .19f; airDash = true; Dashes++; feedback?.Jump(); Log("Air dash");
+                dashTime = .19f; airDash = true; Dashes++; feedback?.Dash(); Log("Air dash");
             }
             if (dashTime > 0)
             {
                 dashTime -= dt; velocity = dashDirection * 22 + Vector3.up * 1.8f;
                 body.Move(velocity * dt); Action = "Air dash"; momentumTime = .25f; return;
             }
-            if(grappleFlight&&!Grounded)SteerGrapple(direction,dt);
+            if(Gliding)GlideSteer(direction,sprint,dt);
+            else if(grappleFlight&&!Grounded)SteerGrapple(direction,dt);
             else if (rollTime > 0)
             {
                 rollTime -= dt;
@@ -245,19 +257,26 @@ namespace TinyWorld
                 velocity.y = Mathf.Sqrt(2 * 25 * jumpHeight); coyote = buffer = 0; Grounded = false;
                 Jumps++; feedback?.Jump(); Log("Jump");
             }
-            float gravity = !grappleFlight&&velocity.y > 0 && !held ? 39 : 25;
-            velocity.y = Mathf.Max(-42, velocity.y - gravity * dt);
+            // The canopy eases any fall into a steady sink, which reads as the glider catching air.
+            if (Gliding) velocity.y = Mathf.Lerp(velocity.y, -(sprint ? glideDiveSink : glideSink), 1 - Mathf.Exp(-3.2f * dt));
+            else velocity.y = Mathf.Max(-42, velocity.y - (!grappleFlight && velocity.y > 0 && !held ? 39 : 25) * dt);
             lastImpact = velocity.y;
+            var before = transform.position;
             var flags = body.Move(velocity * dt);
+            // Flying flat into a wall folds the glider.
+            if (Gliding && (flags & CollisionFlags.Sides) != 0 && new Vector3(transform.position.x - before.x, 0, transform.position.z - before.z).magnitude < Speed * dt * .4f)
+            { SetGliding(false); velocity.x *= .2f; velocity.z *= .2f; feedback?.Land(.25f); }
             if ((flags & CollisionFlags.Above) != 0 && velocity.y > 0) velocity.y = 0;
             Grounded = body.isGrounded;
             // Touchdown: a hard landing while moving becomes a roll that keeps the run going.
             if (Grounded && !wasGrounded)
             {
-                if (lastImpact < -15 && Speed > 3.5f && !Crouched) { rollTime = RollDuration; feedback?.Land(.22f); Log("Roll"); }
+                if (lastImpact < -15 && Speed > 3.5f && !Crouched) { rollTime = RollDuration; feedback?.Roll(); Log("Roll"); }
                 else if (lastImpact < -3) feedback?.Land(Mathf.Clamp01(-lastImpact / 18));
             }
-            Action = rollTime > 0 ? "Roll" : Grounded && Crouched ? "Crouch" : Grounded ? (Speed > .2f ? (sprint ? "Sprint" : "Wander") : "Explore") : (momentumTime > 0 ? "Leap" : "Airborne");
+            if (Gliding) Hint = "WASD steer · Shift dive · Space / C fold";
+            else if (!Grounded && Hint.Length == 0 && velocity.y < -4 && GlideRoom()) Hint = "Space · open glider";
+            Action = Gliding ? (sprint ? "Glide dive" : "Glide") : rollTime > 0 ? "Roll" : Grounded && Crouched ? "Crouch" : Grounded ? (Speed > .2f ? (sprint ? "Sprint" : "Wander") : "Explore") : (momentumTime > 0 ? "Leap" : "Airborne");
             if (Grounded && Physics.Raycast(transform.position + Vector3.up * .2f, Vector3.down, out var floor, .65f, worldMask)
                 && floor.normal.y > .95f)
             {
@@ -265,6 +284,25 @@ namespace TinyWorld
             }
             else safeTime = 0;
             wasGrounded = Grounded;
+        }
+        bool GlideRoom()=>!Physics.Raycast(transform.position+Vector3.up*.2f,Vector3.down,glideClearance,worldMask,QueryTriggerInteraction.Ignore);
+        void SetGliding(bool on,bool instant=false)
+        {
+            if(Gliding==on)return;
+            Gliding=on;
+            if(on){Glides++;grappleFlight=WallRunning=false;momentumTime=0;Glider.Open();feedback?.GlideOpen();Log("Glide");}
+            else{Glider.Fold(instant);if(!instant)feedback?.GlideFold();}
+        }
+        // Steer the carried heading toward the stick at a limited turn rate; Shift trades height for speed.
+        void GlideSteer(Vector3 direction,bool dive,float dt)
+        {
+            var horizontal=new Vector3(velocity.x,0,velocity.z);
+            var heading=horizontal.sqrMagnitude>1?horizontal.normalized:Vector3.ProjectOnPlane(visual.forward,Vector3.up).normalized;
+            if(direction.sqrMagnitude>.01f)heading=Vector3.RotateTowards(heading,direction.normalized,glideTurnRate*dt,0);
+            float target=dive?glideDiveSpeed:glideSpeed,speed=horizontal.magnitude;
+            speed=Mathf.MoveTowards(speed,target,(speed>target?2.5f:dive?9:6)*dt);
+            velocity.x=heading.x*speed;velocity.z=heading.z*speed;
+            Face(heading,dt);
         }
         void Face(Vector3 direction, float dt)
         {
@@ -326,7 +364,7 @@ namespace TinyWorld
                 float caught=WallRunning||Speed>walkSpeed?.2f:0;
                 Hanging=true;grappleFlight=false;Grounded=WallRunning=cornering=false;velocity=Vector3.zero;buffer=0;
                 hangTime=caught;climbRetry=0;climbBlocked=false;if(releaseHand)Hand.Release();
-                airDash=false;Grabs++;feedback?.Climb();Face(-ledgeNormal,1);
+                airDash=false;Grabs++;feedback?.Grab();Face(-ledgeNormal,1);
                 Action="Ledge hang";Hint="W / Space pull up · A / D around corners · C drop";Log(Action);return true;
             }
             return false;
@@ -441,7 +479,7 @@ namespace TinyWorld
                 float pace=Mathf.Clamp01(carrySpeed/sprintSpeed);
                 traverseDuration=action.EndsWith("ault")?Mathf.Lerp(.32f,.24f,pace):fromHang?.62f:Mathf.Lerp(.45f,.36f,pace);
                 Traversing=true;grappleFlight=Hand.Attached;cornering=false;velocity=Vector3.zero;buffer=coyote=0;
-                Action=Crouched?"Crouched pull-up":action;Hint="";Traversals++;feedback?.Climb();Log(Action);return true;
+                Action=Crouched?"Crouched pull-up":action;Hint="";Traversals++;feedback?.Mantle();Log(Action);return true;
             }
             return false;
         }
@@ -495,7 +533,7 @@ namespace TinyWorld
             body.Move(desired-transform.position);Face(-Vector3.Lerp(ledgeNormal,leapNormal,e),dt);
             if(t<1)return;
             Leaping=false;Hanging=true;ledgeTop=leapTop;ledgeNormal=leapNormal;ledgeWallPoint=leapWall;
-            hangTime=.1f;climbRetry=0;Grabs++;feedback?.Climb();Action="Ledge hang";
+            hangTime=.1f;climbRetry=0;Grabs++;feedback?.Grab();Action="Ledge hang";
         }
         Vector3 LandingFoot(RaycastHit hit)=>hit.point+Vector3.up*(.04f+.29f*(1/Mathf.Max(.6f,hit.normal.y)-1));
         bool Walkable(Vector3 normal)=>normal.y>=Mathf.Cos(body.slopeLimit*Mathf.Deg2Rad);
@@ -540,7 +578,7 @@ namespace TinyWorld
             if(!closest)return false;
             vine=closest;grappleFlight=false;Hand.Release();anchor=null;velocity=Vector3.zero;
             Grounded=Swimming=WallRunning=false;buffer=0;airDash=false;
-            Face(-vine.Outward,1);feedback?.Climb();return true;
+            Face(-vine.Outward,1);feedback?.Vine();return true;
         }
         void VineStep(Vector2 input,bool jump,bool drop,float dt)
         {
@@ -592,7 +630,7 @@ namespace TinyWorld
             Action=Zipping?"Zip":"Grapple swing";Hint="Hold click / F · WASD steer · Space zip to the hand · Release to let go";
             if(drop){Hand.Release();Zipping=false;return;}
             if(jump&&Grounded&&Hand.Point.y<=transform.position.y+1.5f){velocity.y=Mathf.Sqrt(50*jumpHeight);Jumps++;feedback?.Jump();}
-            if(jump&&!Zipping&&(!Grounded||Hand.Point.y>transform.position.y+1.5f)){Zipping=true;feedback?.Jump();Log("Zip");}
+            if(jump&&!Zipping&&(!Grounded||Hand.Point.y>transform.position.y+1.5f)){Zipping=true;feedback?.Whoosh();Log("Zip");}
             if(Zipping){ZipStep(direction,dt);return;}
             if(Grounded&&direction.sqrMagnitude<.01f)
             {velocity.x*=Mathf.Exp(-8*dt);velocity.z*=Mathf.Exp(-8*dt);}
@@ -664,7 +702,7 @@ namespace TinyWorld
             velocity = Vector3.Lerp(velocity, target, 1 - Mathf.Exp(-5 * dt));
             if (jump && depth < 1.35f)
             {
-                velocity.y = 10; swimLock = .55f; Swimming = false; Jumps++; feedback?.Splash();
+                velocity.y = 10; swimLock = .55f; Swimming = false; Jumps++; feedback?.Splash(.5f);
             }
             body.Move(velocity * dt); Action = dive ? "Dive" : "Swim"; wasGrounded = false;
         }
@@ -684,9 +722,9 @@ namespace TinyWorld
         }
         void BeginSwing(TraversalAnchor target)
         {
-            anchor = target; ropeLength = Vector3.Distance(transform.position + Vector3.up * 1.4f, anchor.transform.position);
+            SetGliding(false); anchor = target; ropeLength = Vector3.Distance(transform.position + Vector3.up * 1.4f, anchor.transform.position);
             velocity += visual.forward * 2; WallRunning = false; Grabs++; Swings++; airDash = false;
-            feedback?.Climb(); Log("Swing");
+            feedback?.Ring(); Log("Swing");
         }
         void SwingStep(Vector3 direction, bool jump, bool hold, float dt)
         {
@@ -695,7 +733,7 @@ namespace TinyWorld
             {
                 anchor = null; swingNeedsRelease = true;
                 velocity.y = Mathf.Max(0, velocity.y) + (jump ? 8.5f : 1.5f); momentumTime = .65f; grabLock = .12f;
-                feedback?.Jump(); return;
+                feedback?.Whoosh(); return;
             }
             var pivot = anchor.transform.position;
             var hand = transform.position + Vector3.up * 1.4f;
@@ -713,7 +751,7 @@ namespace TinyWorld
         }
         public void Respawn()
         {
-            Teleport(checkpoint); Respawns++; feedback?.Land(.45f); Log("Recovered at safe landing");
+            Teleport(checkpoint); Respawns++; feedback?.Respawn(); Log("Recovered at safe landing");
         }
         public void SetCheckpoint(Vector3 point) => checkpoint = point;
         public void Teleport(Vector3 position)
@@ -721,7 +759,7 @@ namespace TinyWorld
             body.enabled = false; transform.position = position; body.enabled = true;
             body.Move(Vector3.zero); // refresh contact flags so a mid-air teleport is not grounded
             velocity = Vector3.zero; Traversing = Hanging = WallRunning = Swimming = cornering = false; anchor = null;
-            vine=null;grappleFlight=false;Leaping=Zipping=false;rollTime=0;Hand.ResetHand();crouchGrace=0;SetCrouched(manualCrouch||!RoomAt(position,StandingHeight));
+            vine=null;grappleFlight=false;Leaping=Zipping=false;rollTime=0;SetGliding(false,true);Hand.ResetHand();crouchGrace=0;SetCrouched(manualCrouch||!RoomAt(position,StandingHeight));
             buffer = coyote = wallTime = dashTime = 0; wallLock = grabLock = swimLock = 0;
             momentumTime = safeTime = 0; wasGrounded = Grounded = false; airDash = swingNeedsRelease = false;
             if (rope) rope.enabled = false;

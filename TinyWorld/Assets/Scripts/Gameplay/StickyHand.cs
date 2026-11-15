@@ -5,6 +5,7 @@ namespace TinyWorld
     public sealed class StickyHand : MonoBehaviour
     {
         public float maxReach = 10.8f;
+        public float shotSpeed = 110;
         public const float MaxHoldSeconds = 10;
         public float HoldSeconds { get; private set; }
         public bool Attached => target && !flying;
@@ -93,7 +94,7 @@ namespace TinyWorld
             target=collider;localPoint=target.transform.InverseTransformPoint(point);
             localNormal=target.transform.InverseTransformDirection(normal);tip=point;
             flying=false;HoldSeconds=0;RopeLength=Mathf.Max(4.2f,Vector3.Distance(motor.TetherOrigin,Point)*.82f);
-            Attachments++;motor.BeginGrapple();motor.feedback?.Climb();
+            Attachments++;motor.BeginGrapple();motor.feedback?.StickyAttach();
         }
         public void Pull(ref Vector3 velocity,float dt)
         {
@@ -103,7 +104,7 @@ namespace TinyWorld
         }
         public void Release()
         {
-            if(target){tip=Point;motor.EndGrapple();}
+            if(target){tip=Point;motor.EndGrapple();motor.feedback?.StickyRelease();}
             if(target||flying)retract=.32f;
             target=null;flying=false;
         }
@@ -118,7 +119,7 @@ namespace TinyWorld
             }
             if(Flying)
             {
-                float step=Mathf.Min(35*dt,maxReach-traveled);
+                float step=Mathf.Min(shotSpeed*dt,maxReach-traveled);
                 if(Physics.SphereCast(tip,.065f,direction,out var hit,step,SurfaceMask,QueryTriggerInteraction.Ignore))
                     Attach(hit.collider,hit.point,hit.normal);
                 else

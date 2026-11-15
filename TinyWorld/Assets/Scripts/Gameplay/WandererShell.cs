@@ -108,7 +108,7 @@ namespace TinyWorld
             Button("Quit", menu.transform, .055f, () => Application.Quit(), 20);
             hud = Panel("Controls", canvas.transform, new Vector2(.022f, .025f), new Vector2(.61f, .16f), new Color(Palette.Shadow.r, Palette.Shadow.g, Palette.Shadow.b, .88f));
             Text("Location", hud.transform, "THE CLIFF QUARTER", 20, Palette.Brass, new Vector2(.035f, .57f), new Vector2(.96f, .95f));
-            Text("Controls", hud.transform, "WASD move · Space jump / climb · Shift sprint / wall run · Ctrl crouch / dive\nHold click / F sticky hand · C / right click cancel · Hold E swing · Q air dash\nAway + Space wall jump · R last landing · Esc pause · F1 hide help", 18, Palette.Limestone, new Vector2(.035f, .06f), new Vector2(.98f, .57f));
+            Text("Controls", hud.transform, "WASD move · Space jump / climb · Shift sprint / wall run · Ctrl crouch / dive\nHold click / F sticky hand · C / right click cancel · Hold E swing · Q air dash\nAir + Space glider · Away + Space wall jump · R last landing · Esc pause · F1 hide help", 18, Palette.Limestone, new Vector2(.035f, .06f), new Vector2(.98f, .57f));
             aim=Text("Sticky hand aim",canvas.transform,"+",24,Color.white,new Vector2(.46f,.45f),new Vector2(.54f,.55f));
             aim.alignment=TextAlignmentOptions.Center;aim.raycastTarget=false;aim.enabled=false;
             var statusPanel = Panel("Movement status backdrop", canvas.transform, new Vector2(.82f, .935f), new Vector2(.978f, .98f), new Color(Palette.Shadow.r, Palette.Shadow.g, Palette.Shadow.b, .88f));
@@ -138,6 +138,12 @@ namespace TinyWorld
             var button = go.AddComponent<Button>();
             var colors = button.colors; colors.normalColor = Color.white; colors.highlightedColor = Palette.Brass; colors.selectedColor = Palette.Brass; colors.pressedColor = Palette.Terracotta; button.colors = colors;
             Text("Label", go.transform, label, size, Palette.Limestone, new Vector2(.04f, 0), Vector2.one);
+            button.onClick.AddListener(feedback.Click);
+            var hover = go.AddComponent<EventTrigger>();
+            foreach (var type in new[] { EventTriggerType.PointerEnter, EventTriggerType.Select })
+            {
+                var entry = new EventTrigger.Entry { eventID = type }; entry.callback.AddListener(_ => feedback.Hover()); hover.triggers.Add(entry);
+            }
             if (action != null) button.onClick.AddListener(action);
             return button;
         }

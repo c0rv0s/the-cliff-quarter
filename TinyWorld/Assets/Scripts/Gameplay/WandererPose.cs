@@ -187,6 +187,14 @@ namespace TinyWorld
                 thL = E(Mathf.Sin(stroke * 1.6f) * 18, 0, -4); thR = E(-Mathf.Sin(stroke * 1.6f) * 18, 0, 4); shL = shR = E(12);
                 ftL = ftR = E(50); plantFeet = false; hipDrop = .02f;
             }
+            else if (player.Gliding)
+            {
+                // Hands up on the control bar, legs trailing and swaying, body leaning into the bank.
+                float sway = Mathf.Sin(t * 2.1f) * 6, turn = Mathf.Clamp(bankAngle * 1.5f, -14, 14);
+                uaL = E(-166, 0, -14); uaR = E(-166, 0, 14); faL = faR = E(-14);
+                hipsRot = E(0, 0, turn * .6f); chestRot = E(6, 0, turn); headRot = E(-18);
+                thL = E(16 + sway, 0, -5); thR = E(10 - sway, 0, 5); shL = E(32); shR = E(42); ftL = ftR = E(35); plantFeet = false;
+            }
             if (player.Action == "Roll")
             {
                 float r = player.RollProgress;

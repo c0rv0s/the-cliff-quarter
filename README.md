@@ -20,6 +20,8 @@ Open `Builds/The Cliff Quarter.app`, then press **Enter**.
 - **C / right click:** release or drop · From a hang: **S + Space:** hop away
 - **Hold E:** catch a nearby brass ring and swing · **WASD:** pump
 - **Q:** air dash, once per flight
+- **Space in the air** (falling, 3 m+ clear below): open the glider · **WASD:** steer · **Shift:** dive
+  · **Space / C:** fold. Landing, water, ledges, swings, the sticky hand and dashes fold it too.
 - Water: **Space:** rise / leap · **Ctrl / C:** dive · **Shift:** swim faster
 - **R:** recover to your last settled landing · **Esc:** pause · **F1:** hide help
 - Gamepad: sticks move/look, south jump, hold north for sticky hand, east crouch/dive,
@@ -37,7 +39,8 @@ The earlier `RiverCity.unity` and `RiverCityBaseline.unity` scenes are preserved
 
 `AgentScripts/BuildCliffCity.cs` rebuilds only the cliff scene and its generated
 meshes. Save scene work before running it; manual edits to that generated scene
-will be replaced. Traversal tunables are on `WandererMotor`.
+will be replaced. Traversal and glider tunables are on `WandererMotor`.
+`AgentScripts/VerifyGlider.cs` is the glider's Play-mode check.
 
 The wanderer is modeled in `TinyWorld/Art/build_wanderer.py` (Blender 5.2), which
 exports `Assets/Models/Wanderer.fbx`. Rebuild it with
@@ -48,3 +51,6 @@ animates the joints procedurally; gait and lean tunables are on that component.
 See `Setup/CliffCityReport.md` and the approved images in `Setup/Concepts`.
 The city uses sculpted geometry and simple materials; textures and character
 animation are not final.
+
+Sound effects and ambience load from `Assets/Resources/Audio`; sources and licences
+are in `Setup/AudioCredits.md`.

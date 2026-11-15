@@ -58,12 +58,12 @@ public static class BuildQuarter
         if (EditorSceneManager.GetActiveScene().isDirty) throw new Exception("Save the open scene before building.");
         var scene = EditorSceneManager.OpenScene(SourceScene);
         foreach (var root in scene.GetRootGameObjects())
-            if (root.name == "Cliff City" || root.name == "River water volume") Object.DestroyImmediate(root);
+            if (root.name == "Cliff City" || root.name == "River water volume" || root.name == "Stream water volumes") Object.DestroyImmediate(root);
         if (AssetDatabase.IsValidFolder(GeoPath)) AssetDatabase.DeleteAsset(GeoPath);
         AssetDatabase.CreateFolder("Assets/Geometry", "Quarter");
         if (!AssetDatabase.IsValidFolder(MatPath)) AssetDatabase.CreateFolder("Assets/Materials", "Quarter");
-        rng = new System.Random(731921); deco = new System.Random(5150);
-        meshId = buildings = anchors = triangles = ungrounded = 0; vines = new(); spots = new();
+        rng = new System.Random(731921); deco = new System.Random(5150); streamPath = null;
+        meshId = buildings = anchors = triangles = ungrounded = roads = 0; vines = new(); spots = new();
         Materials();
         city = new GameObject("Cliff Quarter").transform;
         InitPads();
@@ -85,7 +85,7 @@ public static class BuildQuarter
                     Shelf(side, tier, z0, z1);
                     Row(side, tier, z0, z1);
                     for (float zz = z0 + 4; zz < z1; zz += R(12, 22))
-                        if (StairDistance(zz) > 6 && !(side < 0 && tier == 0 && zz > 18 && zz < 61))
+                        if (StairDistance(zz) > 6 && !NearCascade(side, zz, 7) && !(side < 0 && tier == 0 && zz > 18 && zz < 61))
                         {
                             Planter(Point(side, tier, zz, 1.4f), R(.6f, 1));
                             if (Chance(.5f)) Lamp(Point(side, tier, zz + 3, .9f));
@@ -113,6 +113,7 @@ public static class BuildQuarter
         Physics.SyncTransforms();
         StartGroup("Mountain sanctuaries"); Mountains(); FinishGroup();
         StartGroup("Farmlands"); Farms(); FinishGroup();
+        StartGroup("Stream cascade"); Cascade(); FinishGroup();
         StartGroup("Harbour"); Port(); FinishGroup();
         StartGroup("River channel and quays");
         RiverBed();
@@ -140,7 +141,7 @@ public static class BuildQuarter
         foreach (var (z, tier, width) in BridgeList) Bridge(z, tier, width);
         FinishGroup();
         StartGroup("Shrine of the current");
-        Rock(new Vector3(Center(118), -6, 118), new Vector3(8, 13, 10), 11);
+        Rock(new Vector3(Center(118), -6, 118), new Vector3(8, 12.9f, 10), 11);
         frame = Matrix4x4.TRS(new Vector3(Center(118), 6, 118), Quaternion.identity, Vector3.one);
         Cylinder(Vector3.zero, 7, .6f, trim, true, 36);
         frame = Matrix4x4.identity;
@@ -203,6 +204,18 @@ public static class BuildQuarter
         ConfigureScene();
         var volume = new GameObject("River water volume").AddComponent<RiverWaterVolume>();
         volume.transform.position = new Vector3(0, 0, 250); volume.size = new Vector3(1400, 24, 1400);
+        // The farm stream: short boxes along its deep channel, each holding its own surface height.
+        var stream = new GameObject("Stream water volumes").transform;
+        var path = StreamPath();
+        for (int i = 0; i + 2 < path.Length - 6; i += 2)
+        {
+            Vector3 a = StreamWorld(i, 0), b = StreamWorld(i + 2, 0);
+            var box = new GameObject("Stream water").AddComponent<RiverWaterVolume>(); box.transform.SetParent(stream, false);
+            box.transform.SetPositionAndRotation((a + b) * .5f, Quaternion.LookRotation(new Vector3(b.x - a.x, 0, b.z - a.z)));
+            box.size = new Vector3(11, 2.5f, Vector3.Distance(a, b) + 1);
+        }
+        var spring = new GameObject("Stream water").AddComponent<RiverWaterVolume>(); spring.transform.SetParent(stream, false);
+        spring.transform.position = W0(1, -48); spring.size = new Vector3(15, 2.5f, 15);
         var player = Object.FindAnyObjectByType<WandererMotor>();
         var start = GameObject.Find("Route · Saffron wall and swing alley").transform.position;
         player.transform.position = new Vector3(start.x - 1, start.y + .15f, 23.5f);
@@ -621,7 +634,7 @@ public static class BuildQuarter
         tint = P("D8C19B");
         for (int tier = 0; tier < 4; tier++)
         {
-            float x0 = Edge(side, tier, z), x1 = Edge(side, tier + 1, z) + side * .6f, y = Level(side, tier, z) - .03f;
+            float x0 = Edge(side, tier, z), x1 = Edge(side, tier + 1, z) + (tier == 3 ? side * .5f : 0), y = Level(side, tier, z) - .03f;
             QuadN(new(x0, -8, z), new(x0, y, z), new(x1, y, z), new(x1, -8, z), normal, rock);
         }
         tint = Color.white;
@@ -681,6 +694,43 @@ public static class BuildQuarter
     static List<(float u, float z, float r, float h)>[] pads;
     static float RiverU(float z) => 95 + 28 * Mathf.Sin(z * .011f + .6f) + 9 * Mathf.Sin(z * .034f);
     static float WaterY(float z) => 108.5f - (z + 60) * .013f;
+    // The farm stream leaves its plateau course at BendZ and spills over the east crest at CascadeZ,
+    // where the crest dips below stream level, then falls terrace by terrace into the river.
+    const float BendZ = 312, CascadeZ = 336;
+    static Vector3[] streamPath;
+    // Centreline as (u, water height, z), u measured from the east crest.
+    static Vector3[] StreamPath()
+    {
+        if (streamPath != null) return streamPath;
+        var p = new List<Vector3>();
+        for (float z = -52; z < BendZ - 2; z += 3) p.Add(new Vector3(RiverU(z), WaterY(z), z));
+        Vector3 a = new(RiverU(BendZ), WaterY(BendZ), BendZ), c = new(RiverU(BendZ), 0, CascadeZ), b = new(0, Crest(1, CascadeZ).y + .3f, CascadeZ);
+        for (int i = 0; i <= 24; i++)
+        {
+            float t = i / 24f; var q = (1 - t) * (1 - t) * a + 2 * (1 - t) * t * c + t * t * b;
+            q.y = Mathf.Lerp(a.y, b.y, Mathf.SmoothStep(0, 1, (t - .3f) / .7f)); p.Add(q);
+        }
+        return streamPath = p.ToArray();
+    }
+    // Horizontal distance to the stream centreline and the water height there.
+    static (float d, float w) StreamAt(float u, float z)
+    {
+        var path = StreamPath(); float best = float.MaxValue, w = 0; var p = new Vector2(u, z);
+        for (int i = 0; i + 1 < path.Length; i++)
+        {
+            Vector2 a = new(path[i].x, path[i].z), b = new(path[i + 1].x, path[i + 1].z), ab = b - a;
+            float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / ab.sqrMagnitude), d = (a + ab * t - p).sqrMagnitude;
+            if (d < best) { best = d; w = Mathf.Lerp(path[i].y, path[i + 1].y, t); }
+        }
+        return (Mathf.Sqrt(best), w);
+    }
+    // Stream-space point (u, y, z) offset `across` the flow, in world space.
+    static Vector3 StreamWorld(int i, float across)
+    {
+        var path = StreamPath(); var t = path[Mathf.Min(i + 1, path.Length - 1)] - path[Mathf.Max(i - 1, 0)];
+        var n = new Vector2(t.z, -t.x).normalized * across; float u = path[i].x + n.x, z = path[i].z + n.y;
+        return new Vector3(Crest(1, z).x + u, path[i].y, z);
+    }
     static float UplandBase(int side, float u, float z, float crestY)
     {
         float h;
@@ -707,10 +757,11 @@ public static class BuildQuarter
         if (side > 0 && z > -58)
         {
             // Stream: banks held above the water, a flat bed below it; a spring pond at the head.
-            float d = Mathf.Abs(u - RiverU(z)), w = WaterY(z);
+            var (d, w) = StreamAt(u, z);
             if (z < -40) d = Mathf.Min(d, Mathf.Sqrt((u - RiverU(-40)) * (u - RiverU(-40)) + (z + 48) * (z + 48)) * .6f);
             h = Mathf.Lerp(h, Mathf.Max(h, w + .35f), 1 - Edge01(9, 16, d));
-            h = Mathf.Lerp(h, w - 1.5f, 1 - Edge01(4.5f, 9, d));
+            // Deep enough to swim, shoaling to a shallow lip at the crest.
+            h = Mathf.Lerp(h, w - Mathf.Lerp(.3f, 1.8f, Edge01(2, 16, u)), 1 - Edge01(4.5f, 9, d));
         }
         return Mathf.Lerp(h, -10, Edge01(UMax - 24, UMax, u));
     }
@@ -779,7 +830,7 @@ public static class BuildQuarter
         // Bridge to the crest over the upper escarpment.
         var old = frame; var d = crest - s1; float length = new Vector2(d.x, d.z).magnitude;
         frame = Matrix4x4.TRS((s1 + crest) * .5f, Quaternion.LookRotation(new Vector3(d.x, 0, d.z)), Vector3.one);
-        Box(new Vector3(0, -.4f, 0), new Vector3(4.6f, .8f, length + 2), paving, true);
+        Box(new Vector3(0, -.41f, 0), new Vector3(4.6f, .8f, length + 2), paving, true);
         // Rails start clear of the landing so the stair can step onto the bridge.
         foreach (int s in new[] { -1, 1 }) Rail(new Vector3(s * 2.15f, 0, -length * .5f + 4.6f), new Vector3(s * 2.15f, 0, length * .5f));
         frame = old;
@@ -801,7 +852,7 @@ public static class BuildQuarter
             if (side > 0) Quad(p, q, r, s, paving, true); else Quad(s, r, q, p, paving, true);
             Vector3 down = Vector3.down * .5f;
             if (side > 0) Quad(p + down, q + down, q, p, trim, true); else Quad(q + down, p + down, p, q, trim, true);
-            if (i % 2 == 0 && StairDistance(a) > 16)
+            if (i % 2 == 0 && StairDistance(a) > 16 && !NearCascade(side, a, 4))
             {
                 var railP = p + Vector3.right * side * .4f + Vector3.up * .65f;
                 var railQ = q + Vector3.right * side * .4f + Vector3.up * .65f;
@@ -849,6 +900,7 @@ public static class BuildQuarter
             if (tier > 0) foreach (var end in new[] { g.a + Vector3.left * 4, g.b + Vector3.right * 4 }) keepOut.Add((end, end + Vector3.up * 11, 4.8f));
         }
         keepOut.Add((Crown, Crown + Vector3.up * 24, 11.5f));
+        for (int tier = 0; tier < 4; tier++) { float y = Level(1, tier, CascadeZ); keepOut.Add((new Vector3(Edge(1, tier + 1, CascadeZ), y, CascadeZ), new Vector3(Edge(1, tier, CascadeZ), y, CascadeZ), 4)); }
         foreach (int side in new[] { -1, 1 }) { var s0 = GrandStairStart(side); var s1 = GrandStairTop(side); keepOut.Add((s0 - Vector3.forward * 3, s1, 4.2f)); keepOut.Add((s1, s1 + Vector3.right * side * 14, 5.5f)); }
     }
     static bool Blocked(Matrix4x4 m, float width, float depth, float y0, float y1)
@@ -909,7 +961,7 @@ public static class BuildQuarter
             var back = Point(side, tier, z, span - 1.8f);
             if (Chance(.75f) && !BlockedCircle(back, 1.2f, 9)) Cypress(back, D(5, 9));
             var mid = Point(side, tier, z + D(-1, 1), D(3, span - 4.5f));
-            if (Chance(.55f)) OliveTree(mid, D(.75f, 1.05f));
+            if (Chance(.55f)) { if (!NearCascade(side, mid.z, 6)) OliveTree(mid, D(.75f, 1.05f)); }
             else if (!BlockedCircle(mid, 1, 2)) Shrubs(mid, D(1.2f, 2.2f));
             if (Chance(.5f)) Shrubs(Point(side, tier, z + D(2, 4), D(1.2f, span - 2)), D(.8f, 1.6f));
         }
@@ -986,8 +1038,9 @@ public static class BuildQuarter
             Box(new Vector3(0, (yb + yt) * .5f, mid), new Vector3(width, yt - yb, back - f), plaster, true, false);
             tint = Color.white; aoBase = float.NaN;
             if (st.tiles) { tint = st.accent; Box(new Vector3(0, yt - .55f, f - .03f), new Vector3(width, .4f, .08f), trim); tint = Color.white; }
-            Box(new Vector3(0, yt - .14f, mid - .2f), new Vector3(width + .3f, .3f, back - f + .4f), trim, true);
-            if (k == 0) Box(new Vector3(0, .15f, mid - .12f), new Vector3(width + .16f, .55f, depth + .24f), trim, true);
+            // Cornice and plinth overhang the back wall too, so neither shares its plane.
+            Box(new Vector3(0, yt - .14f, mid - .125f), new Vector3(width + .3f, .3f, back - f + .55f), trim, true);
+            if (k == 0) Box(new Vector3(0, .15f, mid), new Vector3(width + .16f, .55f, depth + .24f), trim, true);
             else
             {
                 float ledge = f - fronts[k - 1];
@@ -1577,13 +1630,13 @@ public static class BuildQuarter
         for (int i = 0; i < count; i++)
         {
             float y = delta.y * (i + 1f) / count;
-            Box(new Vector3(0, y - .14f, (i + .5f) * tread), new Vector3(width, .28f, tread + .025f), paving);
+            Box(new Vector3(0, y - .14f, (i + .5f) * tread), new Vector3(width + i % 2 * .02f, .28f, tread + .025f), paving);
             if (i % 5 == 0) Box(new Vector3(width * .5f - .18f, y + .18f, (i + .5f) * tread), new Vector3(.3f, .36f, tread), trim, true);
             if (i % 9 == 4 && Chance(.5f)) Planter(new Vector3(-width * .5f + .3f, y, (i + .5f) * tread), .28f);
         }
         var stairFrame = frame;
         frame *= Matrix4x4.TRS(new Vector3(0, delta.y * .5f + .06f, flat.magnitude * .5f), Quaternion.Euler(-Mathf.Atan2(delta.y, flat.magnitude) * Mathf.Rad2Deg, 0, 0), Vector3.one);
-        Box(Vector3.zero, new Vector3(width, .12f, delta.magnitude), paving, true);
+        Box(Vector3.zero, new Vector3(width - .04f, .12f, delta.magnitude), paving, true);
         frame = stairFrame;
         for (int side = -1; side <= 1; side += 2)
         {
@@ -1627,8 +1680,8 @@ public static class BuildQuarter
         foreach (var pair in new[] { ("A", r.a), ("Turn", r.turnIn), ("Out", r.turnOut), ("B", r.b) }) { var node = new GameObject(pair.Item1).transform; node.SetParent(route, false); node.position = pair.Item2; }
         Stairs(r.a, r.firstEnd, 3.2f);
         Cylinder(r.turnIn + Vector3.down * .4f, 3, .4f, paving, true, 32);
-        Cylinder(r.turnOut + Vector3.down * .4f, 3, .4f, paving, true, 32);
-        Box(r.mid + Vector3.down * .2f, new Vector3(5.6f, .4f, 4), paving, true);
+        Cylinder(r.turnOut + Vector3.down * .42f, 3, .4f, paving, true, 32);
+        Box(r.mid + Vector3.down * .21f, new Vector3(5.6f, .4f, 4), paving, true);
         var travel = (r.secondStart - r.turnOut).normalized;
         Stairs(r.secondStart, r.b - travel * 3.6f, 3.2f);
         Cylinder(r.b + Vector3.down * .4f, 3.6f, .4f, paving, true, 32);
@@ -1687,7 +1740,7 @@ public static class BuildQuarter
         var (a, b, length, rise) = BridgeGeometry(z, tier); var d = b - a;
         var old = frame; frame = Matrix4x4.TRS((a + b) * .5f, Quaternion.Euler(0, -Mathf.Atan2(d.z, d.x) * Mathf.Rad2Deg, 0) * Quaternion.Euler(0, 0, Mathf.Asin(d.y / length) * Mathf.Rad2Deg), Vector3.one);
         Box(new Vector3(0, -.35f, 0), new Vector3(length + .8f, .7f, width), paving, true);
-        Arch(new Vector3(0, -rise - .7f, 0), length * .5f, rise, 1.1f, width * .8f, trim, true, 48);
+        Arch(new Vector3(0, -rise - .75f, 0), length * .5f, rise, 1.1f, width * .8f, trim, true, 48);
         for (int side = -1; side <= 1; side += 2)
         {
             Rail(new Vector3(-length * .5f, .03f, side * (width * .5f - .1f)), new Vector3(length * .5f, .03f, side * (width * .5f - .1f)));
@@ -2066,15 +2119,16 @@ public static class BuildQuarter
     static bool Near(int side, float u, float z, float margin)
     {
         foreach (var pd in pads[side < 0 ? 0 : 1]) if ((u - pd.u) * (u - pd.u) + (z - pd.z) * (z - pd.z) < (pd.r + margin) * (pd.r + margin)) return true;
-        return side > 0 && Mathf.Abs(u - RiverU(z)) < 10 + margin;
+        return side > 0 && StreamAt(u, z).d < 10 + margin;
     }
     // Paved road draped over the uplands; avenue roads get obelisks and cypress pairs.
+    static int roads;
     static void Road(int side, Vector3 a, Vector3 b, float width, bool avenue, string color = null)
     {
         var dir = new Vector3(b.x - a.x, 0, b.z - a.z); float length = dir.magnitude; dir /= length;
         var across = Vector3.Cross(Vector3.up, dir) * width * .5f;
-        int n = Mathf.CeilToInt(length / 3);
-        Vector3 G(Vector3 p) { var crest = Crest(side, p.z); return new Vector3(p.x, UplandH(side, (p.x - crest.x) * side, p.z, crest.y) + .12f, p.z); }
+        int n = Mathf.CeilToInt(length / 3); float lift = .2f + roads++ % 6 * .012f;
+        Vector3 G(Vector3 p) { var crest = Crest(side, p.z); return new Vector3(p.x, UplandH(side, (p.x - crest.x) * side, p.z, crest.y) + lift, p.z); }
         for (int i = 0; i < n; i++)
         {
             var p = Vector3.Lerp(a, b, i / (float)n); var q = Vector3.Lerp(a, b, (i + 1f) / n);
@@ -2141,7 +2195,6 @@ public static class BuildQuarter
         foreach (int s in new[] { -1, 1 })
         {
             tint = P("EFE2C8"); var z = s * hl;
-            QuadN(new Vector3(-hw, rY, z), new Vector3(0, rY + ridge, z), new Vector3(0, rY + ridge, z), new Vector3(hw, rY, z), Vector3.forward * s, trim);
             Tri(new Vector3(-hw, rY, z), new Vector3(0, rY + ridge, z), new Vector3(hw, rY, z), trim, true); Tri(new Vector3(hw, rY, z), new Vector3(0, rY + ridge, z), new Vector3(-hw, rY, z), trim, true);
             tint = Palette.Brass;
             Ellipsoid(new Vector3(0, rY + ridge + 1.2f, z), new Vector3(1.1f, 1.6f, .5f), brass, 10, 6);
@@ -2335,7 +2388,7 @@ public static class BuildQuarter
             {
                 float w = D(18, 26), d = D(22, 32);
                 if (Near(E, u + w * .5f, z + d * .5f, 6 + Mathf.Max(w, d) * .5f)) continue;
-                if (Mathf.Abs(u + w * .5f - RiverU(z + d * .5f)) < 14 + w * .5f) continue;
+                if (StreamAt(u + w * .5f, z + d * .5f).d < 14 + w * .5f) continue;
                 Field(E, u, z, w, d, kinds++ % 7 == 4 ? 4 : deco.Next(7));
             }
         // Hamlet: cottages around a square with a well, a chapel and chickens.
@@ -2358,7 +2411,6 @@ public static class BuildQuarter
         // Bridges where the farm tracks cross the stream.
         foreach (float z in new[] { 250f, 60f }) StreamBridge(E, z);
         Road(E, UP(E, RiverU(250) + 12, 250), mill2, 2.6f, false, dirt);
-        Waterfall(E);
         // Hedgerow trees and haystacks.
         for (int i = 0; i < 90; i++)
         {
@@ -2583,15 +2635,14 @@ public static class BuildQuarter
     static void Stream(int side)
     {
         tint = Color.white;
-        for (float z = -52; z < TerrainEnd - .01f; z += 3)
-        {
-            float z1 = Mathf.Min(z + 3, TerrainEnd);
-            Vector3 W(float zz, float du) { var crest = Crest(side, zz); return new Vector3(crest.x + side * (RiverU(zz) + du), WaterY(zz), zz); }
-            QuadN(W(z, -7.5f), W(z1, -7.5f), W(z1, 7.5f), W(z, 7.5f), Vector3.up, water);
-        }
+        // Water is never solid: the bed below carries the player and the swim volumes make it swimmable.
+        var path = StreamPath();
+        // The ribbon starts inside the spring pond, below its surface so the two never z-fight.
+        for (int i = 0; i + 1 < path.Length; i++)
+            if (path[i].z >= -43) QuadN(StreamWorld(i, -7.5f), StreamWorld(i + 1, -7.5f), StreamWorld(i + 1, 7.5f), StreamWorld(i, 7.5f), Vector3.up, water, false);
         var pond = W0(side, -48); Cylinder(new Vector3(pond.x, WaterY(-48), -48), 12, .05f, water, false, 24);
         for (int i = 0; i < 14; i++) { float a = i * Mathf.PI / 7; Tree(OnGround(side, new Vector3(pond.x + Mathf.Cos(a) * 15, 0, -48 + Mathf.Sin(a) * 15)), D(.7f, 1), i % 3 == 0 ? 2 : 0); }
-        for (float z = -40; z < 395; z += D(5, 9))
+        for (float z = -40; z < BendZ - 6; z += D(5, 9))
             foreach (int s in new[] { -1, 1 })
                 if (Chance(.35f)) { tint = Color.Lerp(P("6E8B4A"), P("93A862"), D(0, 1)); var p = W0(side, z) + Vector3.right * side * s * D(8, 10); p.y = Ground(side, p); wind = .8f; Ellipsoid(p + Vector3.up * .4f, new Vector3(.5f, 1.1f, .5f), leaf, 6, 5, .2f); wind = 0; }
         tint = Color.white;
@@ -2607,36 +2658,67 @@ public static class BuildQuarter
         foreach (int s in new[] { -1, 1 }) Rail(new Vector3(-11.5f, deck, s * 1.45f), new Vector3(11.5f, deck, s * 1.45f));
         frame = old; tint = Color.white;
     }
-    // The stream leaves the plateau at the end of the cliffs and falls into the harbour.
-    static void Waterfall(int side)
+    // ---------- stream cascade: over the crest, then a fall, pool and runnel on each terrace down to the river ----------
+    static bool NearCascade(int side, float z, float margin) => side > 0 && Mathf.Abs(z - CascadeZ) < margin;
+    static void Cascade()
     {
-        var lip = W0(side, TerrainEnd); float top = lip.y + .05f, width = 15;
-        int rows = 24; var v = new List<Vector3>(); var uv = new List<Vector2>(); var t = new List<int>();
-        for (int i = 0; i <= rows; i++)
+        const int side = 1; const float z = CascadeZ, poolR = 3.4f;
+        var fx = new System.Random(3360); var outward = Vector3.left * side;
+        float F(float a, float b) => Mathf.Lerp(a, b, (float)fx.NextDouble());
+        void Mist(Vector3 foot, float spread)
         {
-            float f = i / (float)rows, y = Mathf.Lerp(top, .2f, f), out_ = .4f + 6 * Mathf.Sqrt(f) - f * 2.5f, spread = 1 + f * .35f;
+            wind = .9f;
+            for (int i = 0; i < 9; i++)
+            {
+                tint = Color.Lerp(P("FBFAF3"), P("CFE8EA"), F(0, .5f));
+                Ellipsoid(foot + new Vector3(F(-spread, spread), F(0, 1.2f), F(-spread, spread)), new Vector3(F(.9f, 1.8f), F(.6f, 1.3f), F(.9f, 1.8f)), cloth, 9, 6);
+            }
+            wind = 0; tint = Color.white;
+        }
+        // Down the escarpment, hugging the rock.
+        FallSheet("Crest falls", (f, s) =>
+        {
+            var prof = CliffProfile(side, z + s * 10, 30); float j = (1 - f) * 30; int lo = Mathf.Min(Mathf.FloorToInt(j), 29);
+            return Vector3.Lerp(prof[lo], prof[lo + 1], j - lo) + outward * .35f + Vector3.up * .15f;
+        }, 10, 30);
+        for (int tier = 3; tier >= 0; tier--)
+        {
+            float ground = Level(side, tier, z), back = Edge(side, tier + 1, z) + (tier == 3 ? side * .5f : 0), front = Edge(side, tier, z);
+            var pool = new Vector3(back - side * (poolR + .2f), ground, z);
+            tint = P("E9D9BB"); Cylinder(pool, poolR, .3f, trim, true, 20);
+            tint = Color.white; Cylinder(pool + Vector3.up * .3f, poolR - .4f, .04f, water, false, 20);
+            Mist(pool + Vector3.up * .3f, 1.8f);
+            // Runnel from the pool across the terrace, kerbed so the water reads as channelled.
+            float x0 = pool.x - side * (poolR - .5f), y = ground + .14f;
+            tint = P("E9D9BB");
+            foreach (int s in new[] { -1, 1 }) Box(new Vector3((x0 + front) * .5f, ground + .12f, z + s * 1.85f), new Vector3(Mathf.Abs(x0 - front), .24f, .4f), trim, true);
+            tint = Color.white;
+            QuadN(new Vector3(x0, y, z - 1.65f), new Vector3(x0, y, z + 1.65f), new Vector3(front, y, z + 1.65f), new Vector3(front, y, z - 1.65f), Vector3.up, water, false);
+            // Over the street edge to the pool below, or into the river.
+            float bottom = tier > 0 ? Level(side, tier - 1, z) + .3f : .05f, h = y - bottom; var lip = new Vector3(front, y, z);
+            FallSheet($"Cascade fall {tier}", (f, s) => lip + outward * (.2f + .7f * Mathf.Sqrt(h * f)) + Vector3.down * h * f + Vector3.forward * s * 3.4f * (1 + f * .25f), 3.4f, 16);
+            if (tier == 0) Mist(new Vector3(front - side * (.2f + .7f * Mathf.Sqrt(h)), 0, z), 3);
+        }
+        Spot(UP(side, 7, z + 12) + Vector3.up * .1f, "Top of the falls", true);
+    }
+    // A falling sheet: point(f, s) is the world position a fraction f down and s (-.5..5) across.
+    static void FallSheet(string name, Func<float, float, Vector3> point, float width, int rows)
+    {
+        var v = new List<Vector3>(); var uv = new List<Vector2>(); var t = new List<int>();
+        float top = point(0, 0).y, height = top - point(1, 0).y;
+        for (int i = 0; i <= rows; i++)
             for (int k = 0; k <= 6; k++)
             {
-                float a = (k / 6f - .5f) * width * spread;
-                v.Add(new Vector3(lip.x + a, y, TerrainEnd + out_ + Mathf.Sin(k * 1.7f + i * .3f) * .25f)); uv.Add(new Vector2(k / 6f * width / 4, (top - y)));
+                var p = point(i / (float)rows, k / 6f - .5f); v.Add(p); uv.Add(new Vector2(k / 6f * width / 4, top - p.y));
                 if (i < rows && k < 6) { int n = i * 7 + k; t.AddRange(new[] { n, n + 7, n + 8, n, n + 8, n + 1 }); }
             }
-        }
-        var mesh = new Mesh { name = "Waterfall" }; mesh.SetVertices(v); mesh.SetUVs(0, uv); mesh.SetTriangles(t, 0); mesh.RecalculateNormals(); mesh.RecalculateBounds();
-        AssetDatabase.CreateAsset(mesh, GeoPath + "/Waterfall.asset");
-        var go = new GameObject("Waterfall", typeof(MeshFilter), typeof(MeshRenderer)); go.transform.SetParent(group, false);
-        go.GetComponent<MeshFilter>().sharedMesh = mesh; var r = go.GetComponent<MeshRenderer>(); r.sharedMaterial = fall; r.shadowCastingMode = ShadowCastingMode.Off;
-        fall.SetFloat("_Height", top - .2f);
-        // Churned water and drifting spray clouds at the foot.
-        var foot = new Vector3(lip.x, .2f, TerrainEnd + 4.5f);
-        for (int i = 0; i < 26; i++)
-        {
-            float a = D(0, Mathf.PI * 2), rr = D(2, 12); tint = Color.Lerp(P("FBFAF3"), P("CFE8EA"), D(0, .5f)); wind = .9f;
-            Ellipsoid(foot + new Vector3(Mathf.Cos(a) * rr, D(0, 1.5f), Mathf.Sin(a) * rr * .6f + 3), new Vector3(D(1.5f, 3.2f), D(1, 2.4f), D(1.5f, 3)), cloth, 9, 6, .15f);
-        }
-        for (int i = 0; i < 9; i++) { tint = Color.Lerp(P("FBFAF3"), P("D8ECEE"), .4f); Ellipsoid(foot + new Vector3(D(-9, 9), D(3, 12), D(3, 9)), Vector3.one * D(2.5f, 4.5f), cloth, 9, 6, .2f); }
-        wind = 0; tint = Color.white;
-        Spot(new Vector3(lip.x + side * 9, Ground(side, new Vector3(lip.x + side * 9, 0, TerrainEnd - 3)) + .1f, TerrainEnd - 3), "Top of the falls", true);
+        var mesh = new Mesh { name = name }; mesh.SetVertices(v); mesh.SetUVs(0, uv); mesh.SetTriangles(t, 0); mesh.RecalculateNormals(); mesh.RecalculateBounds();
+        AssetDatabase.CreateAsset(mesh, GeoPath + "/" + name + ".asset");
+        var go = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer)); go.transform.SetParent(group, false);
+        go.GetComponent<MeshFilter>().sharedMesh = mesh; var r = go.GetComponent<MeshRenderer>(); r.shadowCastingMode = ShadowCastingMode.Off;
+        // The shader foams the last metres of each fall, so every height gets its own material.
+        var mat = Asset($"Waterfall {Mathf.RoundToInt(height)} m", "TinyWorld/Waterfall"); mat.CopyPropertiesFromMaterial(fall); mat.SetFloat("_Height", height);
+        r.sharedMaterial = mat;
     }
 
     // ---------- harbour (beyond the gorge mouth) ----------
@@ -2683,6 +2765,7 @@ public static class BuildQuarter
         for (float z = 403; z < 476;)
         {
             float w = D(7, 11);
+            if (side < 0 && z < 474 && z + w > 466) { z += w; continue; }
             if (Mathf.Abs(z + w * .5f - 422) < 7 || Mathf.Abs(z + w * .5f - 458) < 7) { if (Chance(.6f)) CrateStack(new Vector3(QuayEdge(side, z + w * .5f) + side * 6, y, z + w * .5f)); z += w; continue; }
             float zc = z + w * .5f, slope = side * .85f;
             var foot = new Vector3(QuayEdge(side, zc) + side * 10, y, zc);
@@ -2789,19 +2872,30 @@ public static class BuildQuarter
     {
         var p0 = new Vector3(QuayEdge(side, PortZ1) + side * 10, 0, PortZ1 - 2); var p1 = new Vector3(side * 100, 0, 572); var p2 = new Vector3(side < 0 ? -22 : 32, 0, 584);
         Vector3 B(float t) => (1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
+        var path = new Vector3[41]; for (int i = 0; i <= 40; i++) path[i] = B(i / 40f);
         for (int i = 0; i < 40; i++)
         {
-            var a = B(i / 40f); var b = B((i + 1) / 40f); var dir = (b - a); dir.y = 0;
-            var old = frame; frame = Matrix4x4.TRS((a + b) * .5f, Quaternion.LookRotation(dir), Vector3.one);
+            var a = path[i];
             tint = Color.Lerp(P("E2CFAA"), P("D2BC94"), Mathf.PerlinNoise(i * .3f, side));
-            Box(new Vector3(0, -3, 0), new Vector3(9, 12.4f, dir.magnitude + .2f), trim, true);
-            tint = P("E9D7B5"); Box(new Vector3(0, 3.35f, 0), new Vector3(7.6f, .3f, dir.magnitude + .2f), paving, true);
-            tint = Color.white; Box(new Vector3(-side * 4.2f, 4, 0), new Vector3(.8f, 1.3f, dir.magnitude + .2f), trim, true);
-            frame = old;
+            Sweep(path, i, -4.5f, 4.5f, -9.2f, 3.2f, trim);
+            tint = P("E9D7B5"); Sweep(path, i, -3.8f, 3.8f, 3.2f, 3.5f, paving);
+            tint = Color.white; Sweep(path, i, -side * 4.2f - .4f, -side * 4.2f + .4f, 3.35f, 4.65f, trim);
             if (i % 2 == 0) Rock(a + new Vector3(side * D(5, 7), -6, 0), new Vector3(D(1.6f, 2.8f), D(6, 8), D(1.6f, 2.8f)), 7);
             if (i % 8 == 4) Lamp(a + Vector3.up * 3.5f + Vector3.right * side * 2.5f);
         }
         if (side > 0) { tint = P("F3E8D2"); Cylinder(p2, 3.4f, 9, trim, true, 16, 2.8f); tint = P("B66547"); Lathe(p2 + Vector3.up * 9, new[] { new Vector2(3.1f, 0), new Vector2(.1f, 3) }, 16, roof, true); tint = Color.white; }
+    }
+    // Segment i of a prism swept along a path; joints are shared, so segments never overlap.
+    static void Sweep(Vector3[] path, int i, float x0, float x1, float y0, float y1, Material mat)
+    {
+        Vector3 S(int k) { var t = path[Mathf.Min(k + 1, path.Length - 1)] - path[Mathf.Max(k - 1, 0)]; t.y = 0; return Vector3.Cross(Vector3.up, t).normalized; }
+        Vector3 P(int k, float x, float y) => path[k] + S(k) * x + Vector3.up * y;
+        int j = i + 1; var fwd = path[j] - path[i]; fwd.y = 0;
+        QuadN(P(i, x0, y1), P(j, x0, y1), P(j, x1, y1), P(i, x1, y1), Vector3.up, mat);
+        QuadN(P(i, x0, y0), P(j, x0, y0), P(j, x0, y1), P(i, x0, y1), -S(i), mat);
+        QuadN(P(i, x1, y0), P(j, x1, y0), P(j, x1, y1), P(i, x1, y1), S(i), mat);
+        if (i == 0) QuadN(P(i, x0, y0), P(i, x1, y0), P(i, x1, y1), P(i, x0, y1), -fwd, mat);
+        if (j == path.Length - 1) QuadN(P(j, x0, y0), P(j, x1, y0), P(j, x1, y1), P(j, x0, y1), fwd, mat);
     }
     static void Lighthouse(Vector3 p)
     {
