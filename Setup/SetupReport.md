@@ -54,14 +54,14 @@ Package installation also dropped a synchronous reply during a script reload;
 the package status confirmed success. Remaining installs used asynchronous status checks.
 No bug report or logs were sent to Unity.
 
-## Remaining work
+## Remaining work at initial setup
 
 Wanderer model/animation, camera collision, movement, vaults, ledges, traversal testing,
 sound, menus, saves, and native performance profiling. The full craft done gate is not met;
 this pass stops at the lit setup baseline.
 
-## Optional agent handoff — not written
+## Agent handoff — added with approval
 
-With approval, add this line to the project's `AGENTS.md`:
+Added to the root `AGENTS.md` during the playable milestone. See `PlayableReport.md` for current gameplay status. The original setup-stage recommendation:
 
 > When building gameplay, feel, audio, shell, or live features, load the `craft-game-floors` skill; if it isn't installed, ask the user whether to run `unity skill install <client>` (ask: never run it without a yes).

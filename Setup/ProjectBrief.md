@@ -10,11 +10,11 @@ The player is a cloaked wanderer exploring freely, without combat or monetizatio
 - Palette: limestone `#F0DFBF`, sandstone `#BC956F`, terracotta `#B66547`, water `#268F98`, olive `#63774C`, shadow `#354E63`, brass `#DAAE57`, sky `#8FC4DF`.
 - Mood: low warm sun, cool open-sky shadows, distant haze.
 
-## First playable route
+## Original playable route
 
 Riverside → market stairs → rooftops → bridge → courtyard.
 Start with running, sprinting, jumping, camera collision, vaults, and ledge climbs.
-Build and test one compact district before expanding the city.
+The initial compact district is preserved in RiverCity.unity.
 
 ## Mac target
 
@@ -27,3 +27,11 @@ Build and test one compact district before expanding the city.
 
 Install Unity; create and open a URP project; verify a lit architectural baseline.
 The setup scene is not a playable parkour build. Movement is the next milestone.
+
+## Current direction
+
+`RiverCityCliffside.unity` expands the sandbox around the approved concepts in
+`Concepts/`. Continuous eroded cliff faces replace stepped terrain. Narrow
+streets, pocket plazas, stacked buildings, bridges, and gardens create vertical
+routes. Preserve the palette; prioritize scale and organic variety over a craft
+checklist. See `CliffCityReport.md` for validation and limits.
