@@ -14,10 +14,12 @@ namespace TinyWorld
         AudioSource lapping, town, wind, cicadas, stream, bells;
         Transform listener, world;
         float bellTimer;
+        GrottoPool grotto;
 
         void Start()
         {
             listener = Camera.main.transform;
+            grotto=FindAnyObjectByType<GrottoPool>();
             world = new GameObject("City ambience").transform; // emitters stay put while the player moves
             lapping = Bed("Ambience/river_lapping"); town = Bed("Ambience/town_day");
             wind = Bed("Ambience/high_wind"); cicadas = Bed("Ambience/cicadas");
@@ -51,6 +53,7 @@ namespace TinyWorld
         void Update()
         {
             float y = listener.position.y, master = feedback.volume, k = 1 - Mathf.Exp(-2 * Time.unscaledDeltaTime);
+            if(grotto)master*=1-.87f*grotto.Shelter(feedback.player.transform.position);
             Fade(lapping, .5f * (1 - Mathf.InverseLerp(3, 30, y)), master, k);
             Fade(town, .4f * (1 - Mathf.InverseLerp(95, 150, y)), master, k);
             Fade(wind, .06f + .3f * Mathf.InverseLerp(30, 170, y), master, k);

@@ -26,6 +26,7 @@ Material:
     m_Ints: []
     m_Floats:
     - _Ambient: 0.55
+    - _Cull: 0
     - _Gloss: 0
     - _Pattern: 1
     - _PatternStrength: 0.45

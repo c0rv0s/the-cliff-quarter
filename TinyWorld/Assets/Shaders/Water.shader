@@ -20,7 +20,7 @@ Shader "TinyWorld/Water"
         Pass
         {
             Tags { "LightMode"="UniversalForward" }
-            ZWrite On Blend Off Cull Back
+            ZWrite Off Blend SrcAlpha OneMinusSrcAlpha Cull Off
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -35,9 +35,10 @@ Shader "TinyWorld/Water"
             half4 _Shallow, _Mid, _Deep, _Sky, _Foam; half _Clarity, _Refraction, _Caustics, _FoamWidth; float4 _Flow;
             CBUFFER_END
             #include "TinyWorldCommon.hlsl"
-            struct A { float4 positionOS:POSITION; };
-            struct V { float4 positionCS:SV_POSITION; float3 positionWS:TEXCOORD0; half fog:TEXCOORD1; };
-            V vert(A i) { V o; o.positionWS = TransformObjectToWorld(i.positionOS.xyz); o.positionCS = TransformWorldToHClip(o.positionWS); o.fog = ComputeFogFactor(o.positionCS.z); return o; }
+            struct A { float4 positionOS:POSITION; float3 normalOS:NORMAL; };
+            struct V { float4 positionCS:SV_POSITION; float3 positionWS:TEXCOORD0; half fog:TEXCOORD1; half facingUp:TEXCOORD2; };
+            V vert(A i) { V o; o.facingUp = TransformObjectToWorldNormal(i.normalOS).y; o.positionWS = TransformObjectToWorld(i.positionOS.xyz); o.positionCS = TransformWorldToHClip(o.positionWS); o.fog = ComputeFogFactor(o.positionCS.z); return o; }
+            float4 _WandererRipple, _WandererWake;
             float Height(float2 q, float t) { return TWNoise(q * .55 + _Flow.xy * t * .9) * .6 + TWNoise(q * 1.3 - _Flow.yx * t * .6 + 4.1) * .4; }
             float3 BedAt(float2 uv) { return ComputeWorldSpacePosition(uv, SampleSceneDepth(uv), UNITY_MATRIX_I_VP); }
             half4 frag(V i) : SV_Target
@@ -47,6 +48,15 @@ Shader "TinyWorld/Water"
                 float e = .12, h = Height(p.xz, t);
                 float3 n = normalize(float3(h - Height(p.xz + float2(e, 0), t), 1.6, h - Height(p.xz + float2(0, e), t)) * float3(2.2, 1, 2.2));
                 float2 uv = GetNormalizedScreenSpaceUV(i.positionCS);
+                // The ocean slab and spring pond also have bottom and side faces.
+                clip(i.facingUp - .02);
+                if (v.y < 0)
+                {
+                    half grazing = 1 - saturate(-dot(n, v));
+                    half ripple = smoothstep(.55, .73, h);
+                    half3 underside = lerp(_Mid.rgb, _Shallow.rgb, ripple);
+                    return half4(underside, .095 + .23 * grazing * grazing + .045 * ripple);
+                }
                 float3 bed = BedAt(uv);
                 float depth = max(0, p.y - bed.y);
                 float2 refractUV = uv + n.xz * _Refraction * saturate(depth * .6);
@@ -80,6 +90,20 @@ Shader "TinyWorld/Water"
                 float ringAt = _FoamWidth * 3.2 + sin(t * 1.1 + p.x * .2 + p.z * .17) * _FoamWidth * .7;
                 half ring = (1 - smoothstep(.0, _FoamWidth * .45, abs(fd - ringAt))) * .55 * (TWNoise(p.xz * 1.6 + t * .2) > .38);
                 color = lerp(color, _Foam.rgb * shade, saturate(edge + ring));
+                // Disturbance stays on the water surface nearest the swimmer.
+                float surface = saturate(1 - abs(p.y - _WandererVisitor.y) * .32);
+                float age = t - _WandererRipple.z;
+                float ringRadius = length(p.xz - _WandererRipple.xy);
+                float arrival = ringRadius - age * 2.15;
+                float rings = (1 - smoothstep(.035,.13,abs(arrival))) + .55 * (1 - smoothstep(.025,.10,abs(arrival + .37)));
+                float entry = rings * saturate(age * 8) * saturate(1 - age * .48) * _WandererRipple.w;
+                float2 heading = float2(sin(_WandererWake.z),cos(_WandererWake.z));
+                float2 behind = _WandererWake.xy - p.xz;
+                float along = dot(behind,heading);
+                float crossWake = abs(dot(behind,float2(-heading.y,heading.x)));
+                float edgeDist = abs(crossWake - (.27 + max(0,along)*.33));
+                float trail = (1 - smoothstep(.035,.14,edgeDist)) * smoothstep(0,.35,along) * saturate(1 - along*.24);
+                color = lerp(color,_Foam.rgb * shade,saturate(surface * (entry + trail * _WandererWake.w)) * .8);
                 return half4(MixFog(color, i.fog), 1);
             }
             ENDHLSL

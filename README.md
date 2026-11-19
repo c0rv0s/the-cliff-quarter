@@ -1,10 +1,12 @@
-# The River Quarter
+# The Cliff Quarter
 
 Third-person parkour sandbox in a Mediterranean fantasy cliff city.
 
-## Play on this Mac
+## Play
 
-Open `Builds/The Cliff Quarter.app`, then press **Enter**.
+Open the `TinyWorld` folder in Unity **6000.6.9f1**, load
+`Assets/Scenes/CliffQuarter.unity`, and press **Play**. Press **Enter** at the title screen.
+If you have a local Mac build, launch `Builds/The Cliff Quarter.app` directly.
 
 - **WASD / arrows:** move · **mouse:** look
 - **Shift:** sprint; run along or up nearby walls while airborne
@@ -20,27 +22,30 @@ Open `Builds/The Cliff Quarter.app`, then press **Enter**.
 - **C / right click:** release or drop · From a hang: **S + Space:** hop away
 - **Hold E:** catch a nearby brass ring and swing · **WASD:** pump
 - **Q:** air dash, once per flight
-- **Space in the air** (falling, 3 m+ clear below): open the glider · **WASD:** steer · **Shift:** dive
+- Moss lends you a glider during his race. Beat him to keep it. **T / D-pad Up** restarts a run.
+- **Space in the air** (falling, 3 m+ clear below) opens the glider · **WASD:** steer · **Shift:** dive
   · **Space / C:** fold. Landing, water, ledges, swings, the sticky hand and dashes fold it too.
 - Water: **Space:** rise / leap · **Ctrl / C:** dive · **Shift:** swim faster
-- **R:** recover to your last settled landing · **Esc:** pause · **F1:** hide help
+- **I / D-pad Left** opens the journal. Each launch starts a fresh adventure.
+- **G** talks to people and uses nearby objects. Hold the **middle mouse button** to look closer.
+- **R** returns to your last settled landing. **Esc** pauses. **F1** opens the controls.
 - Gamepad: sticks move/look, south jump, hold north for sticky hand, east crouch/dive,
-  D-pad down release, right trigger sprint, left shoulder swing, right shoulder dash.
+  D-pad down release, right trigger sprint, left shoulder swing, right shoulder dash, west interact, left trigger look closer, Select controls.
 
 The climbing alley lies ahead of the starting quay. Brass lips lead to its roof
 and swing crossing. Water stairs connect the river to the quays; stair streets,
-balconies, and bridges lead toward the crown gardens.
+balconies, and bridges lead toward the crown gardens. The western stairs connect the
+theatre, temple and palace across three ravines. At the harbour, the lower mouth of
+the salt grotto climbs through the headland to a sea window.
 
 ## Edit
 
-Open `TinyWorld` in Unity **6000.6.9f1**, then open
-`Assets/Scenes/RiverCityCliffside.unity` and press Play.
 The earlier `RiverCity.unity` and `RiverCityBaseline.unity` scenes are preserved.
 
-`AgentScripts/BuildCliffCity.cs` rebuilds only the cliff scene and its generated
-meshes. Save scene work before running it; manual edits to that generated scene
+`AgentScripts/BuildQuarter.cs` rebuilds the playable quarter and its generated
+meshes. The Tiny World menu rebuilds the quarter discoveries prefab. Save scene work before running it; manual edits to that generated scene
 will be replaced. Traversal and glider tunables are on `WandererMotor`.
-`AgentScripts/VerifyGlider.cs` is the glider's Play-mode check.
+`AgentScripts/VerifyGlider.cs` checks flight in Play mode after you win the courier race.
 
 The wanderer is modeled in `TinyWorld/Art/build_wanderer.py` (Blender 5.2), which
 exports `Assets/Models/Wanderer.fbx`. Rebuild it with

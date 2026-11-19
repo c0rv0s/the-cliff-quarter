@@ -4,7 +4,6 @@ using UnityEngine;
 
 namespace TinyWorld
 {
-    // Collectible placed by the city builder. Progress persists in PlayerPrefs.
     public sealed class Sunstone : MonoBehaviour
     {
         public static readonly List<Sunstone> All = new();
@@ -16,27 +15,13 @@ namespace TinyWorld
         Transform gem, beam;
         Vector3 home;
         static Transform player;
-        static HashSet<int> saved;
-        const string Key = "sunstones";
 
         void OnEnable() => All.Add(this);
         void OnDisable() => All.Remove(this);
         void Start()
         {
             gem = transform.Find("Gem"); beam = transform.Find("Beam"); home = gem.localPosition;
-            if (Saved.Contains(id)) Hide();
             Recount();
-        }
-        static HashSet<int> Saved
-        {
-            get
-            {
-                if (saved != null) return saved;
-                saved = new HashSet<int>();
-                foreach (var part in PlayerPrefs.GetString(Key, "").Split(','))
-                    if (int.TryParse(part, out var value)) saved.Add(value);
-                return saved;
-            }
         }
         void Update()
         {
@@ -50,8 +35,6 @@ namespace TinyWorld
         void Take()
         {
             Hide();
-            Saved.Add(id);
-            PlayerPrefs.SetString(Key, string.Join(",", Saved)); PlayerPrefs.Save();
             Recount();
             Collected?.Invoke(this);
         }
@@ -67,7 +50,6 @@ namespace TinyWorld
         }
         public static void ResetProgress()
         {
-            PlayerPrefs.DeleteKey(Key); saved = new HashSet<int>();
             foreach (var s in All) { s.Taken = false; foreach (var r in s.GetComponentsInChildren<Renderer>()) r.enabled = true; }
             Recount();
         }

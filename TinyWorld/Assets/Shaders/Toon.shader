@@ -4,13 +4,14 @@ Shader "TinyWorld/Toon"
 {
     Properties
     {
+        [Enum(UnityEngine.Rendering.CullMode)] _Cull("Cull mode", Float) = 2
         _BaseColor("Base", Color) = (1,1,1,1)
         _ShadowTint("Shadow tint", Color) = (.47,.56,.74,1)
         _RampCenter("Ramp center", Range(-1,1)) = .02
         _RampSoft("Ramp softness", Range(.005,.5)) = .09
         _Ambient("Ambient fill", Range(0,2)) = .55
         _Variation("World variation", Range(0,1)) = .18
-        [Enum(None,0,Masonry,1,Rock,2,Roof,3,Paving,4)] _Pattern("Pattern", Float) = 0
+        [Enum(None,0,Masonry,1,Rock,2,Roof,3,Paving,4,Calcite,5)] _Pattern("Pattern", Float) = 0
         _PatternStrength("Pattern strength", Range(0,2)) = 1
         _TopColor("Top growth", Color) = (.45,.55,.3,1)
         _TopAmount("Top growth amount", Range(0,1)) = 0
@@ -25,6 +26,7 @@ Shader "TinyWorld/Toon"
     SubShader
     {
         Tags { "RenderType"="Opaque" "RenderPipeline"="UniversalPipeline" "Queue"="Geometry" }
+        Cull [_Cull]
         HLSLINCLUDE
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
         CBUFFER_START(UnityPerMaterial)
@@ -41,6 +43,7 @@ Shader "TinyWorld/Toon"
             Name "ForwardLit"
             Tags { "LightMode"="UniversalForward" }
             HLSLPROGRAM
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
@@ -74,10 +77,24 @@ Shader "TinyWorld/Toon"
                 else if (_Pattern == 4) shade = up > .6 ? Blocks(p.xz + p.y, float2(1.25, .82)) : Blocks(WallUV(p, n), float2(.9, .42));
                 else if (_Pattern == 2)
                 {
-                    float warp = TWFbm(p.xz * .035 + p.y * .012) * 7;
-                    float band = frac((p.y + warp) * .19);
-                    shade = lerp(.8, 1.07, smoothstep(.0, .55, band)) * lerp(1, .82, smoothstep(.9, 1, band));
-                    shade *= lerp(.86, 1.1, TWFbm(float2(dot(p.xz, float2(.07, .05)), p.y * .1)));
+                    float fault = TWFbm(p.xz * .043 + p.y * .014);
+                    float bedding = p.y + dot(p.xz,float2(.16,-.08)) + fault * 12;
+                    float band = frac(bedding * .22);
+                    float seam = (1 - smoothstep(.0,.13,band)) * smoothstep(.32,.65,fault);
+                    shade = .97 + .085 * sin(bedding * 1.37) - .14 * seam;
+                    shade *= lerp(.86,1.11,TWFbm(float2(dot(p.xz,float2(.09,.06)),p.y*.15)));
+                }
+                else if (_Pattern == 5)
+                {
+                    float2 plane=float2(dot(p.xz,float2(.83,.55)), p.y+.19*p.z-.09*p.x);
+                    float fold=TWFbm(plane*.47);
+                    float grain=TWNoise(plane*4.3);
+                    float vein=abs(frac(plane.y*.96+fold*1.72+grain*.075)-.5);
+                    float mineral=(1-smoothstep(.012,.045,vein))*smoothstep(.41,.68,fold);
+                    float damp=smoothstep(.49,.72,fold+.07*n.y);
+                    albedo*=lerp(half3(.85,.82,.79),half3(1.02,1.08,1.08),fold);
+                    albedo=lerp(albedo,half3(.50,.49,.39),mineral*.57);
+                    shade=.86+.21*fold+.16*grain-.19*damp;
                 }
                 else if (_Pattern == 3 && up > .15)
                 {
@@ -88,10 +105,10 @@ Shader "TinyWorld/Toon"
                 }
                 return albedo * lerp(1, shade, _PatternStrength);
             }
-            half4 frag(V i) : SV_Target
+            half4 frag(V i, FRONT_FACE_TYPE facing : FRONT_FACE_SEMANTIC) : SV_Target
             {
                 UNITY_SETUP_INSTANCE_ID(i);
-                float3 n = normalize(i.normalWS), p = i.positionWS;
+                float3 n = normalize(i.normalWS) * IS_FRONT_VFACE(facing, 1.0, -1.0), p = i.positionWS;
                 float3 v = GetWorldSpaceNormalizeViewDir(p);
                 half3 albedo = _BaseColor.rgb * i.color.rgb;
                 float vary = TWFbm(p.xz * .06 + p.y * .045);
@@ -121,6 +138,9 @@ Shader "TinyWorld/Toon"
                 half3 sky = SampleSH(n);
                 half3 shadowSide = albedo * (_ShadowTint.rgb * .62 + sky * _Ambient) * indirectAO;
                 half3 litSide = albedo * light.color * form * directAO + albedo * sky * _Ambient * .35 * indirectAO;
+                // Broad cloud shadows cross many facades together, keeping shaded alleys cool.
+                float cloud = smoothstep(.34,.71,TWNoise((p.xz + p.y * float2(.37,.12)) * .018 + _Time.y * float2(.019,.009)));
+                litSide *= lerp(half3(1,.99,.96), half3(.76,.82,.9), cloud);
                 half3 color = lerp(shadowSide, litSide, band);
 
                 half rim = pow(1 - saturate(dot(n, v)), 4) * _RimStrength;
@@ -185,13 +205,14 @@ Shader "TinyWorld/Toon"
             Tags { "LightMode"="DepthNormals" }
             ZWrite On
             HLSLPROGRAM
+            #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_instancing
             struct A { float4 positionOS:POSITION; float3 normalOS:NORMAL; half4 color:COLOR; UNITY_VERTEX_INPUT_INSTANCE_ID };
             struct V { float4 positionCS:SV_POSITION; float3 normalWS:TEXCOORD0; };
             V vert(A i) { V o; UNITY_SETUP_INSTANCE_ID(i); o.positionCS = TransformWorldToHClip(DisplaceWS(TransformObjectToWorld(i.positionOS.xyz), i.color)); o.normalWS = TransformObjectToWorldNormal(i.normalOS); return o; }
-            half4 frag(V i) : SV_Target { return half4(NormalizeNormalPerPixel(i.normalWS), 0); }
+            half4 frag(V i, FRONT_FACE_TYPE facing : FRONT_FACE_SEMANTIC) : SV_Target { return half4(NormalizeNormalPerPixel(i.normalWS) * IS_FRONT_VFACE(facing, 1.0, -1.0), 0); }
             ENDHLSL
         }
     }

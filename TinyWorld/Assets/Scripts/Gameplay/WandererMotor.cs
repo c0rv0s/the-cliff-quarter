@@ -15,6 +15,15 @@ namespace TinyWorld
         [Header("Glider")]
         public float glideSpeed = 9.5f, glideDiveSpeed = 15, glideSink = 2.4f, glideDiveSink = 6.5f, glideTurnRate = 2.2f, glideClearance = 3;
         public bool Gliding { get; private set; }
+        public QuarterSkiff Skiff { get; private set; }
+        bool usedFlip;
+        float flipEnd;
+        public float FlipProgress => flipEnd > Time.time && !Grounded && !Traversing && !Hanging && !Swimming && !VineClimbing && !Gliding ? Mathf.Clamp01(1 - (flipEnd - Time.time) / .54f) : 0;
+        public void Board(QuarterSkiff skiff)
+        {
+            Teleport(skiff.Seat);
+            Skiff = skiff; body.enabled = false;
+        }
         public int Glides { get; private set; }
         public Glider Glider { get; private set; }
         public bool ControlsEnabled { get; set; }
@@ -33,18 +42,39 @@ namespace TinyWorld
         public bool VineClimbing => vine;
         ClimbableVine vine;
         public Vector3 LedgeNormal => ledgeNormal;
+        public bool PullingFromLedge => Traversing && traverseFromHang;
+        Vector3 pullGrip;
+        public Vector3 GripCenter
+        {
+            get
+            {
+                if (PullingFromLedge) return pullGrip;
+                var foot = transform.position;
+                var edge = cornering ? cornerCenter : foot - ledgeNormal * Vector3.Dot(foot - ledgeWallPoint, ledgeNormal);
+                edge.y = cornering ? cornerTop.y : ledgeTop.y;
+                return edge - ledgeNormal * .025f + Vector3.up * .027f;
+            }
+        }
         public bool Leaping { get; private set; }
         public bool Zipping { get; private set; }
         public float TraverseProgress => Traversing ? Mathf.Clamp01(traverseTime / traverseDuration) : 0;
         public float RollProgress => rollTime > 0 ? 1 - rollTime / RollDuration : 0;
         public const float RollDuration = .46f;
         float rollTime, carrySpeed, leapTime, leapDuration, leapArc = .35f;
-        Vector3 carryDir, leapStart, leapEnd, leapTop, leapNormal, leapWall;
+        Vector3 carryDir, leapStart, leapEnd, leapTop, leapNormal;
         const float StandingHeight=1.8f, CrouchHeight=1.02f;
         static readonly float[] MantleLifts={.07f,.3f,.6f};
-        static readonly float[] LandingSides={0,.35f,-.35f,.7f,-.7f};
+        static readonly float[] LandingSides={0,.35f,-.35f,.7f,-.7f,1.12f,-1.12f};
+        static readonly float[] UpwardColumns={0,.33f,.7f,1.1f,1.52f,-.22f,-.52f,-.82f,-1.16f,-1.42f};
+        static readonly float[] UpwardOffsets={0,.42f,-.42f,.88f,-.88f};
+        static readonly float[] SideOffsets={1.2f,1.7f,2.2f,2.7f};
+        static readonly float[] LeapArcs={.35f,.76f,1.18f};
+        readonly RaycastHit[] upperSurfaces=new RaycastHit[24];
         static readonly float[] LedgeInsets={.06f,.25f,.5f};
-        static readonly float[] LandingDepths={.42f,.7f,1f,1.35f,1.7f};
+        static readonly float[] LandingDepths={.42f,.7f,1f,1.35f,1.7f,2f};
+        static readonly float[] RimInsets={.23f,.12f,.045f};
+        static readonly float[] ReachHeights={2.43f,1.94f,1.57f};
+        static readonly float[] ReachDistances={.37f,.54f,.83f};
         static readonly float[] Retreats={0,.2f,.4f,.65f,.9f};
         public Vector3 WallNormal { get; private set; }
         public Vector3 Velocity => velocity;
@@ -61,6 +91,7 @@ namespace TinyWorld
         public int Swings { get; private set; }
         public int Dashes { get; private set; }
         CharacterController body;
+        WandererCamera orbit;
         Vector3 velocity, checkpoint, traverseStart, traverseEnd, traverseLiftStart, ledgeTop, ledgeNormal, dashDirection;
         float traverseLiftY;
         bool traverseFromHang;
@@ -82,6 +113,7 @@ namespace TinyWorld
         void Awake()
         {
             body = GetComponent<CharacterController>();
+            orbit = heading ? heading.GetComponent<WandererCamera>() : null;
             body.excludeLayers=1<<8;
             checkpoint = transform.position;
             Hand=GetComponent<StickyHand>();if(!Hand)Hand=gameObject.AddComponent<StickyHand>();
@@ -126,6 +158,11 @@ namespace TinyWorld
                 TestJumpPressed = TestDash = TestFire = false;
             }
 #endif
+            if (Skiff) {
+                Skiff.Sail(Vector2.ClampMagnitude(move, 1), sprint, Mathf.Min(.1f, Time.deltaTime));
+                transform.position = Skiff.Seat; visual.rotation = Skiff.transform.rotation;
+                Action = "Row"; Hint = "W / S row · A / D steer · G step out"; return;
+            }
             manualCrouch=crouch;
             Hand.SetTrigger(fire,fireHeld);
             float remaining = Mathf.Min(Time.deltaTime, .1f);
@@ -141,9 +178,11 @@ namespace TinyWorld
         }
         void Step(Vector2 input, bool sprint, bool jump, bool held, bool drop, bool swing, bool dash, float dt)
         {
-            if (transform.position.y < -22 || Mathf.Abs(transform.position.x) > 420 || transform.position.z < -260 || transform.position.z > 760)
+            if (transform.position.y < -22 || Mathf.Abs(transform.position.x) > 420 || transform.position.z < -385 || transform.position.z > 760)
             { Respawn(); return; }
             if(drop&&Hand.Flying)Hand.Release();
+            var quests = QuarterQuests.Current;
+            if (Gliding && quests && !quests.CanGlide) SetGliding(false);
             Hand.Tick(dt);crouchGrace-=dt;
             if(!Traversing&&!Hanging)SetCrouched(manualCrouch||crouchGrace>0||!RoomAt(transform.position,StandingHeight));
             wallLock -= dt; grabLock -= dt; swimLock -= dt; momentumTime -= dt;
@@ -163,7 +202,7 @@ namespace TinyWorld
             bool submerged = water && transform.position.y < water.Surface - .5f && swimLock <= 0;
             if (submerged)
             {
-                if (!Swimming) { feedback?.Splash(); Log("Swim"); }
+                if (!Swimming) { usedFlip=false; flipEnd=0; feedback?.Splash(); Log("Swim"); }
                 SetGliding(false); Swimming = true; grappleFlight=false; WallRunning = false; anchor = null; dashTime = 0;
                 SwimStep(direction, sprint, jump, held, drop||manualCrouch, dt); return;
             }
@@ -172,7 +211,7 @@ namespace TinyWorld
             if (Grounded)
             {
                 grappleFlight=false; SetGliding(false);
-                coyote = .13f; wallTime = 0; airDash = false;
+                usedFlip = false; flipEnd = 0; coyote = .13f; wallTime = 0; airDash = false;
             }
             else coyote -= dt;
             candidate = FindAnchor(forward);
@@ -184,7 +223,7 @@ namespace TinyWorld
             {
                 // Free-running: sprinting into an obstacle vaults or mantles without a jump press.
                 if (Grounded && (buffer > 0 || (sprint && Speed > walkSpeed * .85f)) && TryTraverse(direction.normalized, buffer <= 0)) return;
-                if (!Grounded && (velocity.y < 5 || WallRunning) && TryGrab(direction.normalized)) return;
+                if (((Grounded && jump) || (!Grounded && (velocity.y < 5 || WallRunning))) && TryGrab(direction.normalized)) return;
             }
             if (Gliding && (jump || drop || manualCrouch)) { SetGliding(false); jump = false; buffer = 0; }
             RaycastHit wall = default;
@@ -217,8 +256,14 @@ namespace TinyWorld
                 if ((body.Move(velocity * dt) & CollisionFlags.Above) != 0) { WallRunning = false; wallTime = wallRunDuration; velocity = wall.normal * .4f; }
                 wasGrounded = false; return;
             }
+            else if (!Grounded && jump && coyote <= 0 && !Gliding && !usedFlip && dashTime <= 0 && quests && quests.Earned(3)
+                && (!quests.CanGlide || velocity.y > 2 || !GlideRoom() || !sprint && !quests.race.Running))
+            {
+                usedFlip = true; flipEnd = Time.time + .54f; WallRunning = false;
+                velocity.y = Mathf.Sqrt(2 * 25 * jumpHeight); buffer = 0; Jumps++; feedback?.Jump();
+            }
             // A buffered Space in open air, falling or near the apex, opens the glider.
-            else if (buffer > 0 && !Gliding && coyote <= 0 && velocity.y < 3 && dashTime <= 0 && GlideRoom()) { WallRunning = false; buffer = 0; SetGliding(true); }
+            else if (buffer > 0 && !Gliding && coyote <= 0 && velocity.y < 3 && dashTime <= 0 && (!quests || quests.CanGlide) && GlideRoom()) { WallRunning = false; buffer = 0; SetGliding(true); }
             else WallRunning = false;
             if (dash && !Grounded && !airDash)
             {
@@ -244,7 +289,8 @@ namespace TinyWorld
             else if (momentumTime <= 0)
             {
                 var horizontal = new Vector3(velocity.x, 0, velocity.z);
-                float target = Crouched ? walkSpeed * .48f : sprint ? sprintSpeed : walkSpeed;
+                float target = Crouched ? walkSpeed * .48f : sprint ? sprintSpeed * (quests && quests.Earned(4) ? 1.18f : 1) : walkSpeed;
+                if (Grounded && !sprint && orbit && orbit.Inspecting) target = Mathf.Min(2.5f, target);
                 // In the air, speed carried from swings, zips and leaps is steered rather than braked.
                 if (!Grounded && horizontal.magnitude > target && direction.sqrMagnitude > .01f && Vector3.Dot(horizontal, direction) > 0)
                     horizontal = Vector3.RotateTowards(horizontal.normalized, direction.normalized, 2.4f * dt, 0) * Mathf.MoveTowards(horizontal.magnitude, target, 2.5f * dt);
@@ -358,16 +404,37 @@ namespace TinyWorld
                 float height=top.point.y-foot.y;if(height<.85f||height>2.4f)continue;
                 Vector3 normal=Vector3.ProjectOnPlane(wall.normal,Vector3.up).normalized;
                 var hang=wall.point+normal*.38f;hang.y=top.point.y-1.65f;
-                if(!RoomAt(hang,StandingHeight)||!ClearSweep(foot,hang,body.height))continue;
-                body.Move(hang-foot);if(Vector3.Distance(transform.position,hang)>.22f)continue;
-                SetCrouched(false);ledgeTop=top.point;ledgeNormal=normal;ledgeWallPoint=wall.point;
-                float caught=WallRunning||Speed>walkSpeed?.2f:0;
-                Hanging=true;grappleFlight=false;Grounded=WallRunning=cornering=false;velocity=Vector3.zero;buffer=0;
-                hangTime=caught;climbRetry=0;climbBlocked=false;if(releaseHand)Hand.Release();
-                airDash=false;Grabs++;feedback?.Grab();Face(-ledgeNormal,1);
-                Action="Ledge hang";Hint="W / Space pull up · A / D around corners · C drop";Log(Action);return true;
+                if(CatchEdge(foot,hang,top.point,wall.point,normal,releaseHand))return true;
+            }
+            // Thin tile eaves can have a top surface without a vertical fascia.
+            var outward=-Vector3.ProjectOnPlane(direction,Vector3.up).normalized;
+            foreach(float height in ReachHeights)foreach(float distance in ReachDistances)
+            {
+                var probe=foot-outward*distance+Vector3.up*height;
+                if(!Physics.Raycast(probe,Vector3.down,out var top,height-.85f,worldMask,QueryTriggerInteraction.Ignore)||!Walkable(top.normal)
+                    ||!OuterLip(top,outward,1.18f,out var lip))continue;
+                var hang=lip+outward*.4f-Vector3.up*1.65f;
+                if(Vector3.Dot(lip-foot,-outward)<.04f || Vector3.ProjectOnPlane(hang-foot,Vector3.up).magnitude>.72f)continue;
+                if(CatchEdge(foot,hang,lip,lip,outward,releaseHand))return true;
             }
             return false;
+        }
+        bool CatchEdge(Vector3 foot,Vector3 hang,Vector3 top,Vector3 edge,Vector3 normal,bool releaseHand)
+        {
+            if(Grounded && hang.y<foot.y-.10f)return false;
+            if(!RoomAt(hang,StandingHeight)){
+                hang+=normal*.13f;
+                if(!RoomAt(hang,StandingHeight))return false;
+            }
+            var step=hang-foot;
+            if(step.sqrMagnitude>.0001f && Physics.CapsuleCast(foot+Vector3.up*.33f,foot+Vector3.up*(body.height-.29f),.27f,step.normalized,step.magnitude,worldMask,QueryTriggerInteraction.Ignore))return false;
+            body.Move(hang-foot);if(Vector3.Distance(transform.position,hang)>.22f)return false;
+            SetCrouched(false);ledgeTop=top;ledgeNormal=normal;ledgeWallPoint=edge;
+            float caught=WallRunning||Speed>walkSpeed?.2f:0;
+            Hanging=true;grappleFlight=false;Grounded=WallRunning=cornering=false;velocity=Vector3.zero;buffer=0;
+            hangTime=caught;climbRetry=0;climbBlocked=false;if(releaseHand)Hand.Release();
+            airDash=false;Grabs++;feedback?.Grab();Face(-ledgeNormal,1);
+            Action="Ledge hang";Hint="W / Space pull up · A / D around corners · C drop";Log(Action);return true;
         }
         bool ProbeLedgeTop(RaycastHit wall,float y,float distance,out RaycastHit top)
         {
@@ -405,6 +472,7 @@ namespace TinyWorld
                 if(TryClimbFromHang()){Hanging=false;return;}
                 // Wall continues above: leap to the next handhold instead.
                 if((jump||hangTime>.35f)&&TryLeap(0))return;
+                if(TryStandOnRim()){Hanging=false;return;}
                 climbBlocked=true;climbRetry=.2f;
             }
             if(Mathf.Abs(input.x)<.15f)return;
@@ -447,18 +515,58 @@ namespace TinyWorld
                 ledgeWallPoint=cornerCenter;ledgeTop=cornerTop;climbBlocked=false;
             }
         }
+        bool FrontRail(Vector3 edge,Vector3 outward,float reach,out RaycastHit top)
+        {
+            // A 6 cm iron cap can fall between two vertical probes. Find its face first.
+            Vector3 from=edge+outward*1.8f;
+            if(Physics.CapsuleCast(from+Vector3.up*.65f,from+Vector3.up*1.52f,.065f,-outward,out var face,
+                1.8f+reach,worldMask,QueryTriggerInteraction.Ignore)){
+                var over=face.point-outward*.016f;over.y=edge.y+1.75f;
+                if(Physics.Raycast(over,Vector3.down,out top,1.30f,worldMask,QueryTriggerInteraction.Ignore)&&Walkable(top.normal))return true;
+            }
+            top=default;return false;
+        }
         bool TryClimbFromHang()
         {
             Vector3 edge=transform.position-ledgeNormal*.38f;edge.y=ledgeTop.y;
+            bool rail=FrontRail(edge,ledgeNormal,1.1f,out var railTop);
             foreach(float side in LandingSides)foreach(float depth in LandingDepths)for(int ray=0;ray<2;ray++)
             {
                 Vector3 over=edge-ledgeNormal*depth+Vector3.Cross(Vector3.up,ledgeNormal)*side;
                 float rise=ray==0?.32f:1.3f;
-                if(!Physics.Raycast(over+Vector3.up*rise,Vector3.down,out var top,rise+1.3f,worldMask,QueryTriggerInteraction.Ignore))continue;
+                if(!Physics.Raycast(over+Vector3.up*rise,Vector3.down,out var top,rise+1.82f,worldMask,QueryTriggerInteraction.Ignore))continue;
                 float delta=top.point.y-ledgeTop.y;
-                if(!Walkable(top.normal)||delta>1.2f||delta< -1.25f)continue;
+                if(!Walkable(top.normal)||delta>1.2f||delta< -1.8f)continue;
+                // A narrow handrail is a grip. Aim the feet at the terrace behind it.
+                if(delta>.4f && (!Physics.Raycast(top.point-ledgeNormal*.26f+Vector3.up*.18f,Vector3.down,out var support,.38f,worldMask,QueryTriggerInteraction.Ignore)||!Walkable(support.normal)))continue;
+                var end=LandingFoot(top);
                 foreach(float retreat in Retreats)
-                    if(BeginTraverse(LandingFoot(top),"Climb up",ledgeNormal*retreat))return true;
+                    if(BeginTraverse(end,"Climb up",ledgeNormal*retreat))return true;
+                float crest=ledgeTop.y;
+                // A thin rail may lie between two otherwise clear standing positions.
+                var line=Vector3.ProjectOnPlane(end-transform.position,Vector3.up);
+                int steps=Mathf.CeilToInt(line.magnitude/.09f);
+                for(int j=1;j<steps;j++){
+                    var p=transform.position+line*(j/(float)steps);p.y=ledgeTop.y+1.68f;
+                    if(Physics.Raycast(p,Vector3.down,out var obstacle,1.7f,worldMask,QueryTriggerInteraction.Ignore))
+                        crest=Mathf.Max(crest,obstacle.point.y);
+                }
+                if(rail && Vector3.Dot(end-railTop.point,ledgeNormal)<0)crest=Mathf.Max(crest,railTop.point.y);
+                if(crest<=Mathf.Max(end.y,ledgeTop.y)+.06f)continue;
+                foreach(float retreat in Retreats)
+                    if(BeginTraverse(end,"Climb up",ledgeNormal*retreat,crest))return true;
+            }
+            return false;
+        }
+        bool TryStandOnRim()
+        {
+            // A narrow balcony or parapet can support the feet even when the roof beyond is higher.
+            var edge=GripCenter;
+            foreach(float inset in RimInsets){
+                var probe=edge-ledgeNormal*inset+Vector3.up*.24f;
+                if(!Physics.Raycast(probe,Vector3.down,out var top,.54f,worldMask,QueryTriggerInteraction.Ignore)||!Walkable(top.normal))continue;
+                var end=LandingFoot(top);
+                if(BeginTraverse(end,"Climb up",ledgeNormal*.22f))return true;
             }
             return false;
         }
@@ -473,7 +581,8 @@ namespace TinyWorld
                 float height=stance==0&&!manualCrouch?StandingHeight:CrouchHeight;
                 if(!RoomAt(end,height)||!ClearSweep(foot,liftStart,height)||!ClearSweep(liftStart,high,height)||!ClearSweep(high,across,height)||!ClearSweep(across,end,height))continue;
                 SetCrouched(height<StandingHeight);crouchGrace=Crouched?.3f:0;
-                traverseStart=foot;traverseEnd=end;traverseLiftStart=liftStart;traverseLiftY=liftY;traverseFromHang=fromHang;traverseTime=0;
+                traverseStart=foot;traverseEnd=end;traverseLiftStart=liftStart;traverseLiftY=liftY;if(fromHang) pullGrip=GripCenter;
+                traverseFromHang=fromHang;traverseTime=0;
                 var flat=new Vector3(end.x-foot.x,0,end.z-foot.z);
                 carrySpeed=fromHang?0:Speed;carryDir=flat.sqrMagnitude>.001f?flat.normalized:visual.forward;
                 float pace=Mathf.Clamp01(carrySpeed/sprintSpeed);
@@ -483,56 +592,97 @@ namespace TinyWorld
             }
             return false;
         }
-        // Climb leap: hang to hang along a facade, up (side 0) or sideways (side ±1).
-        bool TryLeap(float side)
+        // Find the outer rim of the same walkable surface, including a thin, pitched eave.
+        bool OuterLip(RaycastHit surface,Vector3 outward,float limit,out Vector3 lip)
         {
-            // Scan just outside the facade plane for the next handhold: sills, string courses, cornices, balconies.
-            Vector3 foot=transform.position,tangent=Vector3.Cross(Vector3.up,-ledgeNormal).normalized;
-            Vector3 plane=ledgeWallPoint;plane.y=ledgeTop.y;
-            float along=Vector3.Dot(foot-plane,tangent);
-            var lateral=side==0?new[]{0f,.45f,-.45f}:new[]{1.2f*side,1.7f*side,2.2f*side,2.7f*side};
-            float from=side==0?.7f:-1.1f,to=side==0?4.4f:1.1f;
-            foreach(float s in lateral)
+            lip=surface.point;
+            const float stride=.17f;
+            for(float offset=0;offset<limit;offset+=stride)
             {
-                // The facade plane is the deepest wall hit above the hands; the held ledge itself sticks out of it.
-                float depth=float.NegativeInfinity;
-                foreach(float probe in new[]{.6f,1.3f,2.1f})
+                var sample=lip+outward*stride;
+                if(Physics.Raycast(sample+Vector3.up*.245f,Vector3.down,out var next,.49f,worldMask,QueryTriggerInteraction.Ignore)&&Walkable(next.normal))
+                {lip=next.point;continue;}
+                float lo=0,hi=stride;
+                Vector3 last=lip;
+                for(int j=0;j<5;j++)
                 {
-                    Vector3 start=plane+tangent*(along+s)+ledgeNormal*1.2f;start.y=ledgeTop.y+probe;
-                    if(Physics.Raycast(start,-ledgeNormal,out var face,2,worldMask,QueryTriggerInteraction.Ignore)&&Mathf.Abs(face.normal.y)<.3f)depth=Mathf.Max(depth,face.distance-1.2f);
+                    float mid=(lo+hi)*.5f;
+                    if(Physics.Raycast(lip+outward*mid+Vector3.up*.245f,Vector3.down,out next,.49f,worldMask,QueryTriggerInteraction.Ignore)&&Walkable(next.normal))
+                    {lo=mid;last=next.point;}else hi=mid;
                 }
-                if(float.IsNegativeInfinity(depth))continue;
-                Vector3 facade=plane+tangent*(along+s)-ledgeNormal*depth;
-            for(float h=from;h<=to;h+=.2f)foreach(float outward in new[]{.08f,.17f})
-            {
-                Vector3 column=facade+ledgeNormal*outward;column.y=ledgeTop.y+h+.3f;
-                if(!Physics.Raycast(column,Vector3.down,out var top,.45f,worldMask,QueryTriggerInteraction.Ignore)||!Walkable(top.normal))continue;
-                if(side==0&&top.point.y<ledgeTop.y+.55f)continue;
-                var hang=new Vector3(facade.x,top.point.y-1.65f,facade.z)+ledgeNormal*Mathf.Max(.38f,outward+.36f);
-                if(!RoomAt(hang))continue;
-                bool clear=false;
-                foreach(float arc in new[]{.35f,.8f,1.2f})
-                {
-                    var outwardStart=foot+ledgeNormal*arc;var outwardEnd=hang+ledgeNormal*arc;
-                    if(ClearSweep(foot,outwardStart)&&ClearSweep(outwardStart,outwardEnd)&&ClearSweep(outwardEnd,hang)){clear=true;leapArc=arc;break;}
-                }
-                if(!clear)continue;
-                leapStart=foot;leapEnd=hang;leapTop=top.point;leapNormal=ledgeNormal;leapWall=facade;leapTime=0;
-                leapDuration=.26f+Vector3.Distance(foot,hang)*.05f;
-                Leaping=true;Hanging=cornering=false;climbBlocked=false;velocity=Vector3.zero;
-                Action="Climb leap";Hint="";Traversals++;feedback?.Jump();Log(Action);return true;
-            }
+                lip=last;return true;
             }
             return false;
         }
+        bool TryLeap(float side)
+        {
+            Vector3 start=transform.position,tangent=Vector3.Cross(Vector3.up,-ledgeNormal).normalized;
+            var edge=start-ledgeNormal*Vector3.Dot(start-ledgeWallPoint,ledgeNormal);
+            edge.y=ledgeTop.y;
+            float minRise=side==0?.55f:-1.1f,maxRise=side==0?4.5f:1.35f;
+            foreach(float lateral in side==0?UpwardOffsets:SideOffsets)
+            {
+                Vector3 axis=edge+tangent*(side==0?lateral:lateral*side);
+                float best=float.PositiveInfinity;
+                bool hasRail=FrontRail(axis,ledgeNormal,1.4f,out var rail);
+                for(int col=hasRail?-1:0;col<UpwardColumns.Length;col++)
+                {
+                    float depth=col<0?Vector3.Dot(rail.point-axis,ledgeNormal):UpwardColumns[col];
+                    var origin=axis+ledgeNormal*depth+Vector3.up*(maxRise+.03f);
+                    int hits=Physics.RaycastNonAlloc(origin,Vector3.down,upperSurfaces,maxRise-minRise+.06f,worldMask,QueryTriggerInteraction.Ignore);
+                    for(int i=0;i<hits;i++)
+                    {
+                        var top=upperSurfaces[i];
+                        if(!Walkable(top.normal)||!OuterLip(top,ledgeNormal,1.73f-depth,out var lip))continue;
+                        float rise=lip.y-edge.y;
+                        if(rise<minRise||rise>maxRise||Vector3.Dot(lip-axis,ledgeNormal)>1.73f)continue;
+                        var hang=lip+ledgeNormal*.40f-Vector3.up*1.65f;
+                        float score=(hang-start).sqrMagnitude;
+                        if(score>=best-.001f||!RoomAt(hang))continue;
+                        foreach(float arc in LeapArcs)
+                        {
+                            if(!LeapClear(start,hang,ledgeNormal,arc))continue;
+                            best=score;leapArc=arc;leapEnd=hang;leapTop=lip;break;
+                        }
+                    }
+                }
+                if(float.IsPositiveInfinity(best))continue;
+                leapStart=start;leapNormal=ledgeNormal;leapTime=0;
+                leapDuration=.34f+Vector3.Distance(start,leapEnd)*.065f;
+                Leaping=true;Hanging=cornering=false;climbBlocked=false;velocity=Vector3.zero;
+                Action="Climb leap";Hint="";Traversals++;feedback?.Jump();Log(Action);return true;
+            }
+            return false;
+        }
+        static Vector3 LeapPoint(Vector3 start,Vector3 end,Vector3 normal,float arc,float t)
+        {
+            // Kick away first, rise outside the eave, then bring the hands back to the rim.
+            float across=Mathf.SmoothStep(0,1,t);
+            var point=Vector3.Lerp(start,end,across)+normal*(arc*Mathf.Sin(Mathf.PI*t));
+            float rise=Mathf.Clamp01((t-.11f)/.79f);
+            point.y=Mathf.Lerp(start.y,end.y,Mathf.SmoothStep(0,1,rise))+.14f*Mathf.Sin(Mathf.PI*rise);
+            return point;
+        }
+        bool LeapClear(Vector3 start,Vector3 end,Vector3 normal,float arc)
+        {
+            var previous=start;
+            for(int i=1;i<=12;i++)
+            {
+                var next=LeapPoint(start,end,normal,arc,i/12f);
+                if(!ClearSweep(previous,next))return false;
+                previous=next;
+            }
+            return true;
+        }
         void AdvanceLeap(float dt)
         {
-            leapTime+=dt;float t=Mathf.Clamp01(leapTime/leapDuration),e=t*t*(3-2*t);
-            var desired=Vector3.Lerp(leapStart,leapEnd,e)+(leapNormal+ledgeNormal)*.5f*(leapArc*Mathf.Sin(t*Mathf.PI));
-            desired.y=Mathf.Lerp(leapStart.y,leapEnd.y,1-(1-t)*(1-t))+Mathf.Sin(t*Mathf.PI)*.25f;
-            body.Move(desired-transform.position);Face(-Vector3.Lerp(ledgeNormal,leapNormal,e),dt);
+            leapTime+=dt;float t=Mathf.Clamp01(leapTime/leapDuration);
+            var desired=LeapPoint(leapStart,leapEnd,leapNormal,leapArc,t);
+            body.Move(desired-transform.position);Face(-leapNormal,dt);
             if(t<1)return;
-            Leaping=false;Hanging=true;ledgeTop=leapTop;ledgeNormal=leapNormal;ledgeWallPoint=leapWall;
+            Leaping=false;
+            if(Vector3.Distance(transform.position,leapEnd)>.14f){grabLock=.12f;Action="Airborne";return;}
+            Hanging=true;ledgeTop=leapTop;ledgeNormal=leapNormal;ledgeWallPoint=leapTop;
             hangTime=.1f;climbRetry=0;Grabs++;feedback?.Grab();Action="Ledge hang";
         }
         Vector3 LandingFoot(RaycastHit hit)=>hit.point+Vector3.up*(.04f+.29f*(1/Mathf.Max(.6f,hit.normal.y)-1));
@@ -564,13 +714,17 @@ namespace TinyWorld
             if (t >= 1) { Traversing = false; velocity = carrySpeed > walkSpeed * .6f ? carryDir * carrySpeed * .95f : Vector3.zero; velocity.y = -2;crouchGrace=Crouched?.3f:0;
                 if(Vector3.Distance(transform.position,traverseEnd)<.25f)checkpoint=transform.position;feedback?.Land(.2f); }
         }
+        readonly System.Collections.Generic.List<ClimbableVine> nearbyVines = new();
         bool TryCatchVine(Vector3 direction)
         {
             Vector3 foot=transform.position;ClimbableVine closest=null;float distance=1.25f;
-            foreach(var plant in ClimbableVine.Active)
+            ClimbableVine.Nearby(foot, nearbyVines);
+            foreach(var plant in nearbyVines)
             {
                 if(Vector3.Dot(direction,plant.Outward)>-.25f||foot.y+1.5f<plant.Bottom.y-.25f||foot.y+1.2f>plant.Top.y+.4f)continue;
                 Vector3 center=plant.Top+plant.Outward*.5f;center.y=foot.y;
+                var along=Vector3.Cross(Vector3.up,plant.Outward);
+                center += along * Mathf.Clamp(Vector3.Dot(foot-center,along), -plant.width*.5f, plant.width*.5f);
                 float gap=Vector3.Distance(foot,center);
                 if(gap>=distance||!RoomAt(center,body.height)||!ClearSweep(foot,center,body.height))continue;
                 distance=gap;closest=plant;
@@ -591,13 +745,29 @@ namespace TinyWorld
             }
             if((input.y>.1f||jump)&&transform.position.y>=vine.Top.y-2.6f)
             {
-                ledgeTop=vine.Top+Vector3.up*.35f;ledgeNormal=normal;Hanging=true;
-                bool climbed=TryClimbFromHang();Hanging=false;
+                ledgeWallPoint=vine.Top;ledgeTop=vine.Top+Vector3.up*.35f;ledgeNormal=normal;Hanging=true;
+                bool climbed=TryClimbFromHang() || TryStandOnRim();Hanging=false;
                 if(climbed){vine=null;return;}
             }
             Vector3 sideways=Vector3.Cross(Vector3.up,-normal);
             Vector3 center=vine.Top+normal*.5f;
-            float lateral=Mathf.Clamp(Vector3.Dot(transform.position-center,sideways)+input.x*1.8f*dt,-vine.width*.5f,vine.width*.5f);
+            float lateral=Vector3.Dot(transform.position-center,sideways)+input.x*1.8f*dt;
+            if (Mathf.Abs(lateral)>vine.width*.48f && Mathf.Abs(input.x)>.3f) {
+                var current=vine; var step=sideways*Mathf.Sign(input.x);
+                ClimbableVine.Nearby(transform.position,nearbyVines);
+                float best=1.65f;
+                foreach(var other in nearbyVines) {
+                    var offset=other.Top-vine.Top; float across=Vector3.Dot(offset,step);
+                    if(other==vine || across<.15f || across>=best || Mathf.Abs(Vector3.Dot(offset,normal))>.66f ||
+                        Vector3.Dot(other.Outward,normal)<.75f || transform.position.y+1.3f<other.Bottom.y ||
+                        transform.position.y+1.0f>other.Top.y)continue;
+                    var target=other.Top+other.Outward*.5f;target.y=transform.position.y;
+                    if(!ClearSweep(transform.position,target,body.height))continue;
+                    best=across;current=other;
+                }
+                if(current!=vine) { vine=current;return; }
+            }
+            lateral=Mathf.Clamp(lateral,-vine.width*.5f,vine.width*.5f);
             Vector3 next=center+sideways*lateral;
             next.y=Mathf.Clamp(transform.position.y+input.y*3*dt,vine.Bottom.y-1.35f,vine.Top.y-.9f);
             Vector3 before=transform.position;
@@ -756,7 +926,7 @@ namespace TinyWorld
         public void SetCheckpoint(Vector3 point) => checkpoint = point;
         public void Teleport(Vector3 position)
         {
-            body.enabled = false; transform.position = position; body.enabled = true;
+            Skiff = null; usedFlip = false; flipEnd = 0; body.enabled = false; transform.position = position; body.enabled = true;
             body.Move(Vector3.zero); // refresh contact flags so a mid-air teleport is not grounded
             velocity = Vector3.zero; Traversing = Hanging = WallRunning = Swimming = cornering = false; anchor = null;
             vine=null;grappleFlight=false;Leaping=Zipping=false;rollTime=0;SetGliding(false,true);Hand.ResetHand();crouchGrace=0;SetCrouched(manualCrouch||!RoomAt(position,StandingHeight));

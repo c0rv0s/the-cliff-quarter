@@ -18,6 +18,10 @@ namespace TinyWorld
         Bank step, jump, mantle, land, landHeavy, roll, grab, dash, whoosh, splash, surface, swim, stickyShot, stickyAttach, stickyRelease;
         Bank ring, vine, respawn, sunstone, milestone, glideOpen, glideFold, click, hover;
         AudioSource[] voices;
+        static readonly int Wake = Shader.PropertyToID("_WandererWake");
+        static readonly int Ripple = Shader.PropertyToID("_WandererRipple");
+        static readonly int Visitor = Shader.PropertyToID("_WandererVisitor");
+        float wake;
         int nextVoice;
         float cadence;
 
@@ -48,7 +52,22 @@ namespace TinyWorld
             gameObject.AddComponent<CityAmbience>().feedback = this;
         }
         void OnEnable() => Sunstone.Collected += Collected;
-        void OnDisable() => Sunstone.Collected -= Collected;
+        void OnDisable()
+        {
+            Sunstone.Collected -= Collected;
+            Shader.SetGlobalVector(Wake, Vector4.zero);
+            Shader.SetGlobalVector(Ripple, new Vector4(0,0,-100,0));
+            Shader.SetGlobalVector(Visitor, Vector4.zero);
+        }
+        void LateUpdate()
+        {
+            var p = player.transform.position;
+            Shader.SetGlobalVector(Visitor, new Vector4(p.x,p.y+.9f,p.z,1));
+            wake = Mathf.MoveTowards(wake, player.Swimming ? Mathf.Clamp01(player.Speed/5f) : 0, 2.5f*Time.deltaTime);
+            var v = player.Velocity;
+            float angle = Mathf.Atan2(v.x, v.z);
+            Shader.SetGlobalVector(Wake, new Vector4(p.x,p.z,angle,wake));
+        }
         void Update()
         {
             if (!player.ControlsEnabled) { cadence = .15f; return; }
@@ -80,8 +99,14 @@ namespace TinyWorld
             if (n == Sunstone.All.Count || n % 10 == 0) Voice(milestone.Next(), n == Sunstone.All.Count ? .7f : .45f, 1);
         }
 
+        public void QuestComplete() => Voice(milestone.Next(), .55f, 1);
         public void Jump() { Play(jump, .42f); Puff(6); pose.Launch(); }
-        public void Splash(float strength = 1) { Play(strength > .6f ? splash : surface, .3f + .4f * strength); pose.Impact(.2f * strength); }
+        public void Splash(float strength = 1)
+        {
+            var p = player.transform.position;
+            Shader.SetGlobalVector(Ripple, new Vector4(p.x,p.z,Time.time,strength));
+            Play(strength > .6f ? splash : surface, .3f + .4f * strength); pose.Impact(.2f * strength);
+        }
         public void Grab() { Play(grab, .32f, .88f, 1.04f); }
         public void Mantle() { Play(mantle, .5f); Play(grab, .14f, .85f, .95f); }
         public void WallRun() { Play(grab, .2f, 1, 1.1f); Play(jump, .2f); }

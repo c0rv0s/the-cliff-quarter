@@ -23,11 +23,14 @@ float TWVoronoiEdge(float2 p)
     return d2 - d1;
 }
 // Gentle sway; weight lives in vertex color alpha.
+float4 _WandererVisitor;
 float3 TWWind(float3 positionWS, float weight, float strength)
 {
     float t = _Time.y;
     float gust = .6 + .4 * sin(t * .37 + positionWS.x * .02);
     float3 offset = float3(sin(t * 1.7 + positionWS.x * .45 + positionWS.z * .3), sin(t * 2.3 + positionWS.y) * .3, cos(t * 1.3 + positionWS.z * .5 + positionWS.y * .2));
-    return positionWS + offset * weight * strength * gust * .09;
+    float3 brush = positionWS - _WandererVisitor.xyz;
+    float along = saturate(1 - dot(brush, brush) * .70) * _WandererVisitor.w;
+    return positionWS + (offset * gust * .09 + brush * along * .65) * weight * strength;
 }
 #endif

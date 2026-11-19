@@ -29,10 +29,11 @@ namespace TinyWorld
                 float scale = birds ? .7f + (float)random.NextDouble() * .4f : .6f + (float)random.NextDouble() * .7f;
                 go.transform.localScale = Vector3.one * scale;
                 members[i] = go.transform;
-                phase[i] = (float)random.NextDouble() * Mathf.PI * 2;
+                phase[i] = (float)random.NextDouble() * (birds ? Mathf.PI * 2 : 1.8f);
                 speed[i] = (birds ? .16f : .3f) * (.8f + (float)random.NextDouble() * .5f) * (random.NextDouble() < .5 ? 1 : -1);
+                if (!birds) speed[i] = .43f;
                 orbit[i] = radius * (.45f + (float)random.NextDouble() * .55f);
-                height[i] = birds ? (float)random.NextDouble() * 9 : -depth - (float)random.NextDouble() * .8f;
+                height[i] = birds ? (float)random.NextDouble() * 9 : -Mathf.Min(depth,.85f) - (float)random.NextDouble() * .28f;
             }
         }
         void Update()
@@ -71,9 +72,12 @@ namespace TinyWorld
         }
         static Mesh FishMesh()
         {
-            var v = new[] { new Vector3(0, 0, .28f), new Vector3(.07f, 0, .05f), new Vector3(0, .05f, 0), new Vector3(-.07f, 0, .05f), new Vector3(0, -.04f, 0), new Vector3(0, 0, -.2f), new Vector3(.08f, 0, -.32f), new Vector3(-.08f, 0, -.32f) };
-            var t = new[] { 0, 1, 2, 0, 2, 3, 0, 4, 1, 0, 3, 4, 1, 5, 2, 2, 5, 3, 3, 5, 4, 4, 5, 1, 5, 6, 7, 5, 7, 6 };
-            return Build("Fish", v, t);
+            var v = new[]{ new Vector3(0,0,.47f),new Vector3(.12f,.015f,.14f),new Vector3(0,.13f,.06f),new Vector3(-.12f,.015f,.14f),new Vector3(0,-.12f,.06f),new Vector3(0,0,-.31f),
+                new Vector3(0,.15f,-.49f),new Vector3(0,0,-.425f),new Vector3(0,-.14f,-.49f),new Vector3(0,.205f,-.06f),new Vector3(0,.073f,-.16f),new Vector3(.18f,-.055f,-.04f),new Vector3(-.18f,-.055f,-.04f) };
+            var t = new[]{0,1,2,0,2,3,0,4,1,0,3,4,1,5,2,2,5,3,3,5,4,4,5,1,5,6,7,7,6,5,5,7,8,8,7,5,2,9,10,10,9,2,1,11,4,4,11,1,3,4,12,12,4,3};
+            var mesh=Build("Silver-sided fish",v,t);
+            var colors=mesh.colors;for(int i=0;i<v.Length;i++) colors[i]=(i==2||i==9||i==10?new Color(.14f,.49f,.55f):i==6||i==8?new Color(.95f,.65f,.26f):new Color(.75f,.89f,.84f)).linear;
+            mesh.colors=colors;return mesh;
         }
         static Mesh BirdMesh()
         {

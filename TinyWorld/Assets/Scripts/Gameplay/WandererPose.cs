@@ -32,7 +32,19 @@ namespace TinyWorld
             }
         }
 
-        void Awake() { hipsRest = hips.localPosition; lastYaw = transform.eulerAngles.y; }
+        Vector3 palmL, palmR;
+        void Awake()
+        {
+            hipsRest = hips.localPosition; lastYaw = transform.eulerAngles.y;
+            palmL = PalmOffset(handL, "Glove.L"); palmR = PalmOffset(handR, "Glove.R");
+        }
+        static Vector3 PalmOffset(Transform hand, string name)
+        {
+            var glove = hand.Find(name);
+            return glove && glove.TryGetComponent<MeshRenderer>(out var mesh)
+                ? hand.InverseTransformPoint(glove.TransformPoint(mesh.localBounds.center))
+                : Vector3.down * .05f;
+        }
         public void Impact(float strength) { impact = Mathf.Max(impact, strength); stretch = Mathf.Min(stretch, -.1f * Mathf.Clamp01(strength * 1.5f)); }
         public void Launch() => stretch = .1f;
 
@@ -122,8 +134,8 @@ namespace TinyWorld
             float t = Time.time;
             if (player.Hanging)
             {
-                float shimmy = player.Action.Contains("hmmy") ? Mathf.Sin(t * 9) : 0;
-                uaL = E(-172, 0, -8 + shimmy * 10); uaR = E(-172, 0, 8 + shimmy * 10); faL = faR = E(-8);
+                float shimmy = (player.Action == "Shimmy" || player.Action == "Corner shimmy") ? Mathf.Sin(t * 9) : 0;
+                uaL = E(-103, 0, -14); uaR = E(-103, 0, 14); faL = faR = E(-54);
                 chestRot = E(-6, 0, shimmy * 4); headRot = E(-25);
                 thL = E(-18 + shimmy * 14, 0, -4); thR = E(8 - shimmy * 14, 0, 4); shL = E(35); shR = E(20);
                 ftL = ftR = E(25); plantFeet = false;
@@ -202,6 +214,17 @@ namespace TinyWorld
                 uaL = E(-60, 0, -25); uaR = E(-60, 0, 25); faL = faR = E(-90);
                 thL = E(-110); thR = E(-100); shL = shR = E(130); ftL = ftR = E(-20); plantFeet = false; hipDrop = -.45f * Mathf.Sin(r * Mathf.PI);
             }
+            if (player.FlipProgress > 0)
+            {
+                hipsRot = E(360 * Mathf.SmoothStep(0, 1, player.FlipProgress)); chestRot = E(32); headRot = E(-18);
+                thL = E(-90); thR = E(-103); shL = shR = E(115); uaL = uaR = E(-55); faL = faR = E(-74); plantFeet = false;
+            }
+            if (player.Skiff)
+            {
+                hipsRot = E(0); chestRot = E(9); thL = thR = E(-70); shL = shR = E(84);
+                float stroke = Mathf.Sin(player.Skiff.Stroke) * 21;
+                uaL = uaR = E(-43 + stroke); faL = faR = E(-52 + stroke); plantFeet = false; hipDrop = -.34f;
+            }
             if (player.Dashing)
             {
                 hipsRot = E(60); chestRot = E(10); headRot = E(-50);
@@ -235,7 +258,7 @@ namespace TinyWorld
             var targets = new[] { hipsRot, chestRot, thL, thR, shL, shR, ftL, ftR, uaL, uaR, faL, faR };
             var joints = new[] { hips, chest, thighL, thighR, shinL, shinR, footL, footR, upperArmL, upperArmR, forearmL, forearmR };
             if (blended == null) blended = (Quaternion[])targets.Clone();
-            float blend = player.Action == "Roll" ? 1 : 1 - Mathf.Exp(-poseBlend * dt);
+            float blend = player.Action == "Roll" || player.FlipProgress > 0 ? 1 : 1 - Mathf.Exp(-poseBlend * dt);
             for (int i = 0; i < joints.Length; i++) { blended[i] = Quaternion.Slerp(blended[i], targets[i], blend); joints[i].localRotation = blended[i]; }
             handL.localRotation = E(-10 - elbow * .2f, 0, -8); handR.localRotation = E(-10 - elbow * .2f, 0, 8);
 
@@ -268,6 +291,17 @@ namespace TinyWorld
             float st = stretch + (air > .5f ? Mathf.Clamp(player.VerticalSpeed * .006f, -.04f, .06f) : 0);
             rig.localScale = new Vector3(1 - st * .5f, 1 + st, 1 - st * .5f);
 
+            if (player.Hanging || player.PullingFromLedge)
+            {
+                float weight = player.Hanging ? 1 : 1 - Mathf.SmoothStep(0,1,Mathf.InverseLerp(.12f,.55f,player.TraverseProgress));
+                var facing = Quaternion.LookRotation(-player.LedgeNormal, Vector3.up);
+                var right = facing * Vector3.right;
+                PlantPalm(upperArmL, forearmL, handL, palmL, player.GripCenter - right*.22f, facing, -right, weight);
+                PlantPalm(upperArmR, forearmR, handR, palmR, player.GripCenter + right*.22f, facing, right, weight);
+                blended[8] = upperArmL.localRotation; blended[9] = upperArmR.localRotation;
+                blended[10] = forearmL.localRotation; blended[11] = forearmR.localRotation;
+            }
+
             // ---- secondary motion: cape and scarf ----
             float drag = Mathf.Max(0, local.z) * 2.3f + Mathf.Max(0, -player.VerticalSpeed) * 2.2f - Mathf.Max(0, player.VerticalSpeed) * 1.2f;
             float flutter = Mathf.Sin(t * 11 + Mathf.Sin(t * 3)) * Mathf.Clamp01(speed / 8 + Mathf.Abs(player.VerticalSpeed) / 12) * 5;
@@ -288,6 +322,26 @@ namespace TinyWorld
             float lid = blink > 0 ? .12f : 1;
             if (eyeL) eyeL.localScale = new Vector3(1, lid, 1);
             if (eyeR) eyeR.localScale = new Vector3(1, lid, 1);
+        }
+        static void PlantPalm(Transform arm, Transform elbow, Transform wrist, Vector3 palmOffset,
+            Vector3 grip, Quaternion facing, Vector3 outward, float weight)
+        {
+            if (weight <= 0) return;
+            var palmRotation = facing * E(-90);
+            var target = grip - palmRotation * Vector3.Scale(palmOffset, wrist.lossyScale);
+            Vector3 shoulder = arm.position, axis = (target - shoulder).normalized;
+            float upper = Vector3.Distance(shoulder, elbow.position);
+            float lower = Vector3.Distance(elbow.position, wrist.position);
+            float span = Mathf.Clamp(Vector3.Distance(target, shoulder), Mathf.Abs(upper-lower)+.001f, upper+lower-.001f);
+            float along = (upper*upper - lower*lower + span*span) / (2*span);
+            var pole = Vector3.ProjectOnPlane(outward*.6f - facing*Vector3.forward, axis).normalized;
+            var bend = shoulder + axis*along + pole*Mathf.Sqrt(Mathf.Max(0,upper*upper-along*along));
+            var armRest = arm.localRotation; var elbowRest = elbow.localRotation;
+            arm.rotation = Quaternion.FromToRotation(elbow.position-shoulder,bend-shoulder) * arm.rotation;
+            elbow.rotation = Quaternion.FromToRotation(wrist.position-elbow.position,target-elbow.position) * elbow.rotation;
+            arm.localRotation = Quaternion.Slerp(armRest, arm.localRotation, weight);
+            elbow.localRotation = Quaternion.Slerp(elbowRest, elbow.localRotation, weight);
+            wrist.rotation = Quaternion.Slerp(wrist.rotation,palmRotation,weight);
         }
         Vector3 shoulderR() => upperArmR.position;
     }
