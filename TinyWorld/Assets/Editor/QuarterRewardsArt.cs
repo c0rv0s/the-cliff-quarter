@@ -33,40 +33,65 @@ namespace TinyWorld.EditorArt
             Art(holder,"Luminous sea glass",panes,"Sea-glass lantern");
         }
 
+        static QuarterForms SkiffHull()
+        {
+            var hull = new QuarterForms(Wood);
+            float[] z = {-2.08f,-1.66f,-.87f,.48f,1.47f,2.13f};
+            float[] widths = {.055f,.52f,.76f,.81f,.56f,.035f};
+            Vector3 Plank(float side,int station,int course) {
+                float f = course / 4f;
+                return V(side * widths[station] * Mathf.Lerp(.26f, 1, f),
+                    -.29f + .82f*f + Mathf.Pow(Mathf.Abs(z[station])/2.13f, 2)*.28f, z[station]);
+            }
+            foreach (int side in new[] {-1,1}) {
+                for (int i=0; i<z.Length-1; i++) {
+                    for (int j=0; j<4; j++) {
+                        var a=Plank(side,i,j);var b=Plank(side,i+1,j);var c=Plank(side,i+1,j+1);var d=Plank(side,i,j+1);
+                        hull.ink=j<2?Teal:j==2?Blue:Red;
+                        hull.Silk(a,b,c); hull.Silk(a,c,d);
+                    }
+                    hull.ink=Cream; hull.Rod(Plank(side,i,4),Plank(side,i+1,4),.038f,.038f);
+                    hull.ink=Wood; hull.Silk(Plank(side,i,0),Plank(side,i+1,0),V(0,-.3f,z[i+1]));
+                    hull.Silk(Plank(side,i,0),V(0,-.3f,z[i+1]),V(0,-.3f,z[i]));
+                }
+            }
+            // The sole meets the second strake from bow to stern, above the waterline.
+            var boards=new[]{Palette.Hex("AB7852"),Palette.Hex("986441"),Palette.Hex("AF805C")};
+            const int plankCount=5;
+            for(int j=0;j<plankCount;j++){
+                float left=-1+2f*j/plankCount, right=-1+2f*(j+1)/plankCount;
+                hull.ink=boards[j%boards.Length];
+                for(int i=0;i<z.Length-1;i++)
+                    hull.Face(Plank(left,i,2),Plank(left,i+1,2),Plank(right,i+1,2),Plank(right,i,2));
+            }
+            foreach(int i in new[]{0,z.Length-1}){
+                hull.ink=Wood;
+                for(int j=0;j<4;j++){
+                    var a=Plank(-1,i,j); var b=Plank(1,i,j);
+                    var c=Plank(1,i,j+1); var d=Plank(-1,i,j+1);
+                    hull.Silk(a,b,c); hull.Silk(a,c,d);
+                }
+                hull.Silk(Plank(-1,i,0),Plank(1,i,0),V(0,-.3f,z[i]));
+            }
+            hull.ink=Wood;
+            foreach(float station in new[]{-1.14f,-.14f,.90f}) hull.Block(V(0,.36f,station),V(1.19f,.095f,.3f));
+            return hull;
+        }
+
         static void Rewards(Transform root, QuarterQuests book)
         {
             var t = Node(root, "Belen’s painted skiff", V(-14.8f, .02f, 428.44f));
             t.rotation = Quaternion.Euler(0, 90, 0);
             var boat = t.gameObject.AddComponent<QuarterSkiff>();
             book.skiff = boat; boat.reach = 3.5f; boat.handle = V(0,.88f,0);
-            var hull = new QuarterForms(Wood);
-            float[] z = {-2.08f,-1.66f,-.87f,.48f,1.47f,2.13f};
-            float[] widths = {.055f,.52f,.76f,.81f,.56f,.035f};
             foreach (int side in new[] {-1,1}) {
-                Vector3 Plank(int station,int course) {
-                    float f = course / 4f;
-                    return V(side * widths[station] * Mathf.Lerp(.26f, 1, f),
-                        -.29f + .82f*f + Mathf.Pow(Mathf.Abs(z[station])/2.13f, 2)*.28f, z[station]);
-                }
-                for (int i=0; i<z.Length-1; i++) {
-                    for (int j=0; j<4; j++) {
-                        var a=Plank(i,j);var b=Plank(i+1,j);var c=Plank(i+1,j+1);var d=Plank(i,j+1);
-                        hull.ink=j<2?Teal:j==2?Blue:Red;
-                        hull.Silk(a,b,c); hull.Silk(a,c,d);
-                    }
-                    hull.ink=Cream; hull.Rod(Plank(i,4),Plank(i+1,4),.038f,.038f);
-                    hull.ink=Wood; hull.Silk(Plank(i,0),Plank(i+1,0),V(0,-.3f,z[i+1]));
-                    hull.Silk(Plank(i,0),V(0,-.3f,z[i+1]),V(0,-.3f,z[i]));
-                }
                 var oar = new QuarterForms(Wood);
                 oar.Rod(V(-side*.53f,.12f,0),V(side*.9f,-.17f,0),.035f,.052f);
                 oar.ink=Teal;oar.Rod(V(side*.83f,-.16f,0),V(side*1.32f,-.28f,0),.10f,.13f,5);
                 var blade=Art(t,side<0?"Port oar":"Starboard oar",oar,"Shutters",V(side*.70f,.53f,.14f));
                 if(side<0) boat.portOar=blade; else boat.starboardOar=blade;
             }
-            hull.ink=Wood;
-            foreach(float station in new[]{-1.14f,-.14f,.90f}) hull.Block(V(0,.36f,station),V(1.19f,.095f,.3f));
-            Art(t,"Painted lapstrake hull",hull);
+            Art(t,"Painted lapstrake hull",SkiffHull());
             var regalia = new QuarterForms(Blue);
             foreach (int side in new[]{-1,1}) {
                 var shoulder=V(side*.215f,.23f,0);

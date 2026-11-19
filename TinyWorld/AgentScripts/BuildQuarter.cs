@@ -2789,8 +2789,14 @@ public static class BuildQuarter
         tint=ivory;Box(new(0,(eave+hall)/2,45),new(62,eave-hall,1.4f),plaster,true);
         Box(new(0,eave+.25f,24),new(64,.85f,45),trim,true);
         tint=enamel;Box(new(0,eave+1,24),new(63.5f,.68f,44.5f),shutter,true);
+        void Cupola(Vector3 spring,float radius,float height,int sides)
+        {
+            // The projecting cornice closes the underside all the way to the dome's rim.
+            tint=ivory;Cylinder(spring-Vector3.up*.55f,radius+.08f,.62f,trim,true,sides,radius+.25f);
+            tint=enamel;Dome(spring,radius,height,shutter,true,sides);
+        }
         tint=ivory;Cylinder(new(0,eave+1.34f,24),16,7,trim,true,36);
-        tint=enamel;Dome(new(0,eave+8.34f,24),16.8f,15.5f,shutter,true,40);
+        Cupola(new(0,eave+8.34f,24),16.8f,15.5f,40);
         tint=Palette.Brass;
         Cylinder(new(0,eave+23.3f,24),.75f,3.8f,brass,true,12,.12f);
         for(int rib=0;rib<20;rib++){
@@ -2818,8 +2824,9 @@ public static class BuildQuarter
                 float a=j*Mathf.PI/4;
                 Column(foot+new Vector3(2.9f*Mathf.Cos(a),shaft+1,2.9f*Mathf.Sin(a)),7,.44f);
             }
-            tint=enamel;Dome(foot+Vector3.up*(shaft+8),4.5f,6.5f,shutter,true,20);
-            tint=Palette.Brass;Cylinder(foot+Vector3.up*(shaft+14.3f),.53f,5,brass,true,10,.025f);
+            var spring=foot+Vector3.up*(shaft+8.55f);
+            Cupola(spring,4.5f,6.5f,20);
+            tint=Palette.Brass;Cylinder(spring+Vector3.up*6.3f,.53f,5,brass,true,10,.025f);
         }
         // Patterned aisle and a raised apse with the king's high-backed chair.
         tint=P("9F4F43");Box(new(0,hall+.027f,18),new(5.7f,.05f,29),shutter);
