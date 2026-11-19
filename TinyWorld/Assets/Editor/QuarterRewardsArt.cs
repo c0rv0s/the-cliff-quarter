@@ -4,6 +4,35 @@ namespace TinyWorld.EditorArt
 {
     public static partial class BuildQuarterLandmarks
     {
+        static QuarterForms LanternFrame()
+        {
+            var frame=new QuarterForms(Palette.Hex("896438"));
+            frame.Lathe(Vector3.zero,8,(-.145f,.002f),(-.14f,.077f),(-.114f,.11f),(-.09f,.105f));
+            frame.Lathe(Vector3.zero,8,(.067f,.103f),(.081f,.114f),(.12f,.058f),(.127f,.009f));
+            frame.ink=Gold;
+            for(int i=0;i<8;i++){
+                float angle=i*Mathf.PI/4;
+                var rim=V(Mathf.Cos(angle),0,Mathf.Sin(angle));
+                frame.Rod(rim*.102f-Vector3.up*.102f,rim*.102f+Vector3.up*.078f,.008f,.008f,5);
+            }
+            Vector3 Handle(int i){
+                float angle=i*Mathf.PI/8;
+                return V(0,.101f+.076f*Mathf.Sin(angle),.066f*Mathf.Cos(angle));
+            }
+            for(int i=0;i<8;i++)frame.Rod(Handle(i),Handle(i+1),.011f,.011f,6);
+            frame.ink=Wood;
+            frame.Rod(V(0,.17f,0),V(.19f,.228f,.11f),.019f,.023f,6);
+            frame.ink=Gold;frame.Block(V(.185f,.23f,.112f),V(.044f,.046f,.048f));
+            return frame;
+        }
+
+        static void AddLanternGlass(Transform holder)
+        {
+            var panes=new QuarterForms(Palette.Hex("80D9BB"));
+            panes.Lathe(Vector3.zero,8,(-.104f,.097f),(-.065f,.105f),(.069f,.1f));
+            Art(holder,"Luminous sea glass",panes,"Sea-glass lantern");
+        }
+
         static void Rewards(Transform root, QuarterQuests book)
         {
             var t = Node(root, "Belen’s painted skiff", V(-14.8f, .02f, 428.44f));
@@ -49,12 +78,8 @@ namespace TinyWorld.EditorArt
                 }
             }
             book.paradeMantle=Art(root,"Courier parade epaulettes",regalia).gameObject;
-            var lantern=new QuarterForms(Gold);
-            lantern.Rod(V(0,.06f,0),V(0,.2f,0),.013f,.014f);
-            lantern.ink=Teal; lantern.Lathe(Vector3.zero,8,(-.19f,.045f),(-.14f,.09f),(.007f,.087f),(.06f,.044f));
-            lantern.ink=Gold;
-            foreach(float h in new[]{-.17f,.033f}) lantern.Lathe(Vector3.zero,8,(h,.068f),(h+.016f,.078f));
-            book.lantern=Art(root,"Nera’s sea-glass lantern",lantern).gameObject;
+            book.lantern=Art(root,"Nera’s sea-glass lantern",LanternFrame()).gameObject;
+            AddLanternGlass(book.lantern.transform);
             var light=book.lantern.AddComponent<Light>();light.type=LightType.Point;light.color=Palette.Hex("A0FFE3");
             light.intensity=3.2f;light.range=6;light.shadows=LightShadows.None;
 

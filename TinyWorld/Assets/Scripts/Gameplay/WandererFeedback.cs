@@ -107,6 +107,11 @@ namespace TinyWorld
             Shader.SetGlobalVector(Ripple, new Vector4(p.x,p.z,Time.time,strength));
             Play(strength > .6f ? splash : surface, .3f + .4f * strength); pose.Impact(.2f * strength);
         }
+        public void CallSkiff(Vector3 at)
+        {
+            Shader.SetGlobalVector(Ripple, new Vector4(at.x,at.z,Time.time,.8f));
+            Play(ring,.36f,1.1f,1.1f);
+        }
         public void Grab() { Play(grab, .32f, .88f, 1.04f); }
         public void Mantle() { Play(mantle, .5f); Play(grab, .14f, .85f, .95f); }
         public void WallRun() { Play(grab, .2f, 1, 1.1f); Play(jump, .2f); }

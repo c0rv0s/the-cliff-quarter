@@ -54,7 +54,7 @@ namespace TinyWorld.EditorArt
                 var crown = stone("Crown observatory"); var kite = Node(root,"The sun kite",crown + V(0,-1.05f,-3.8f)); Kite(kite);
                 HarbourHeadlands(root); SeaLions(root);
                 Physics.SyncTransforms();
-                Residents(root, court); Stories(root,court); WallIvy(root);
+                Residents(root, court); Stories(root,court); WallIvy(root); MarketWares(root); Wildlands(root); PalaceGaol(root);
                 var used=root.GetComponentsInChildren<MeshFilter>(true).Select(f=>f.sharedMesh).ToHashSet();
                 foreach(var item in AssetDatabase.LoadAllAssetRepresentationsAtPath(MeshFile))
                     if(item is Mesh mesh&&!used.Contains(mesh))Object.DestroyImmediate(mesh,true);

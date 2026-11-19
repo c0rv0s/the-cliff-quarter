@@ -15,6 +15,7 @@ namespace TinyWorld
         [Header("Glider")]
         public float glideSpeed = 9.5f, glideDiveSpeed = 15, glideSink = 2.4f, glideDiveSink = 6.5f, glideTurnRate = 2.2f, glideClearance = 3;
         public bool Gliding { get; private set; }
+        public Rect travelBounds = Rect.MinMaxRect(-420,-385,420,760);
         public QuarterSkiff Skiff { get; private set; }
         bool usedFlip;
         float flipEnd;
@@ -161,7 +162,7 @@ namespace TinyWorld
             if (Skiff) {
                 Skiff.Sail(Vector2.ClampMagnitude(move, 1), sprint, Mathf.Min(.1f, Time.deltaTime));
                 transform.position = Skiff.Seat; visual.rotation = Skiff.transform.rotation;
-                Action = "Row"; Hint = "W / S row · A / D steer · G step out"; return;
+                Action = "Row"; Hint = "W / S row · Hold Shift to row faster · A / D steer · G step out"; return;
             }
             manualCrouch=crouch;
             Hand.SetTrigger(fire,fireHeld);
@@ -178,7 +179,7 @@ namespace TinyWorld
         }
         void Step(Vector2 input, bool sprint, bool jump, bool held, bool drop, bool swing, bool dash, float dt)
         {
-            if (transform.position.y < -22 || Mathf.Abs(transform.position.x) > 420 || transform.position.z < -385 || transform.position.z > 760)
+            if ((transform.position.y < -22 && !DungeonInterior.Contains(transform.position)) || !travelBounds.Contains(new Vector2(transform.position.x,transform.position.z)))
             { Respawn(); return; }
             if(drop&&Hand.Flying)Hand.Release();
             var quests = QuarterQuests.Current;

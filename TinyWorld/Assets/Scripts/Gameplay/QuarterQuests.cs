@@ -10,7 +10,15 @@ namespace TinyWorld
         public QuarterSkiff skiff;
         public GameObject lantern, paradeMantle;
         bool paradeOutfit = true;
-        public bool Earned(int quest) => stages[quest] == Tales[quest].Length;
+        bool allRewardsUnlocked;
+        public bool Earned(int quest) => allRewardsUnlocked || stages[quest] == Tales[quest].Length;
+        public void GrantAllRewards()
+        {
+            if (allRewardsUnlocked) return;
+            allRewardsUnlocked = true;
+            RefreshWorld();
+            Announce("All six quest rewards unlocked.", 4);
+        }
         public bool CanGlide => Earned(1) || (race && race.Running);
         static readonly (string name, string use)[] Prizes = {
             ("Sea-glass lantern", "Lights your way"),
@@ -18,7 +26,7 @@ namespace TinyWorld
             ("Parade outfit", "Change outfits in the journal"),
             ("Swallow flip", "Jump again in midair"),
             ("Bell keeper’s boots", "Sprint to run faster"),
-            ("Painted skiff", "Board at the fish pier")
+            ("Painted skiff", "B / R3 calls it to the nearest water")
         };
         public int CelebrationQuest { get; private set; } = -1;
         public string RewardName => Prizes[CelebrationQuest].name;
@@ -62,7 +70,7 @@ namespace TinyWorld
             if (player && lantern) {
                 var hips = player.GetComponentInChildren<WandererPose>().hips;
                 lantern.transform.SetParent(hips, false);
-                lantern.transform.localPosition = new Vector3(.22f, -.08f, .06f);
+                lantern.transform.localPosition = new Vector3(-.38f, -.195f, -.12f);
             }
             if (player && paradeMantle)
                 paradeMantle.transform.SetParent(player.GetComponentInChildren<WandererPose>().chest, false);
@@ -118,7 +126,7 @@ namespace TinyWorld
                 if((i==2&&stages[i]>=4&&!atBarn) || stages[i]>=Tales[i].Length || Tales[i][stages[i]].actor!=who)continue;
                 var beat=Tales[i][stages[i]++];
                 string line = (char.IsUpper(who[0]) ? who + "   ·   " : "") + beat.line;
-                bool finished = Earned(i);
+                bool finished = stages[i] == Tales[i].Length;
                 float seconds = finished ? Mathf.Clamp(1 + line.Length * .05f, 3.5f, 8) : 9;
                 Announce(line, seconds, finished ? i : -1);
                 RefreshWorld();

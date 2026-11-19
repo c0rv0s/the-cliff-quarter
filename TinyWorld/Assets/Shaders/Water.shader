@@ -36,8 +36,8 @@ Shader "TinyWorld/Water"
             CBUFFER_END
             #include "TinyWorldCommon.hlsl"
             struct A { float4 positionOS:POSITION; float3 normalOS:NORMAL; };
-            struct V { float4 positionCS:SV_POSITION; float3 positionWS:TEXCOORD0; half fog:TEXCOORD1; half facingUp:TEXCOORD2; };
-            V vert(A i) { V o; o.facingUp = TransformObjectToWorldNormal(i.normalOS).y; o.positionWS = TransformObjectToWorld(i.positionOS.xyz); o.positionCS = TransformWorldToHClip(o.positionWS); o.fog = ComputeFogFactor(o.positionCS.z); return o; }
+            struct V { float4 positionCS:SV_POSITION; float3 positionWS:TEXCOORD0; half facingUp:TEXCOORD1; };
+            V vert(A i) { V o; o.facingUp = TransformObjectToWorldNormal(i.normalOS).y; o.positionWS = TransformObjectToWorld(i.positionOS.xyz); o.positionCS = TransformWorldToHClip(o.positionWS); return o; }
             float4 _WandererRipple, _WandererWake;
             float Height(float2 q, float t) { return TWNoise(q * .55 + _Flow.xy * t * .9) * .6 + TWNoise(q * 1.3 - _Flow.yx * t * .6 + 4.1) * .4; }
             float3 BedAt(float2 uv) { return ComputeWorldSpacePosition(uv, SampleSceneDepth(uv), UNITY_MATRIX_I_VP); }
@@ -104,7 +104,7 @@ Shader "TinyWorld/Water"
                 float edgeDist = abs(crossWake - (.27 + max(0,along)*.33));
                 float trail = (1 - smoothstep(.035,.14,edgeDist)) * smoothstep(0,.35,along) * saturate(1 - along*.24);
                 color = lerp(color,_Foam.rgb * shade,saturate(surface * (entry + trail * _WandererWake.w)) * .8);
-                return half4(MixFog(color, i.fog), 1);
+                return half4(MixFog(color, ComputeFogFactor(TransformWorldToHClip(p).z)), 1);
             }
             ENDHLSL
         }

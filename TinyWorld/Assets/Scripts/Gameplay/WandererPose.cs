@@ -19,7 +19,9 @@ namespace TinyWorld
         Vector3 lastVelocity, accel, hipsRest;
         Spring capePitch, capeRoll, capeLowerPitch, scarfPitch, scarfRoll, leanSpring, bankSpring, crouchSpring, airSpring;
         Quaternion headLook = Quaternion.identity;
+        readonly Quaternion[] targets = new Quaternion[12];
         Quaternion[] blended;
+        Transform[] joints;
         [Tooltip("How fast joints blend toward each new pose; lower is softer.")] public float poseBlend = 20;
 
         struct Spring
@@ -35,6 +37,7 @@ namespace TinyWorld
         Vector3 palmL, palmR;
         void Awake()
         {
+            joints = new[] { hips, chest, thighL, thighR, shinL, shinR, footL, footR, upperArmL, upperArmR, forearmL, forearmR };
             hipsRest = hips.localPosition; lastYaw = transform.eulerAngles.y;
             palmL = PalmOffset(handL, "Glove.L"); palmR = PalmOffset(handR, "Glove.R");
         }
@@ -96,7 +99,7 @@ namespace TinyWorld
             Quaternion headRot = E(-leanAngle * .55f + breath * .5f, 0, -bankAngle * .3f);
             float crouch = crouchSpring.Step(player.Crouched ? 1 : 0, 3.5f, .8f, dt);
             bool grounded = player.Grounded;
-            float air = airSpring.Step(grounded || player.Hanging || player.Swimming || player.VineClimbing ? 0 : 1, 4, .8f, dt);
+            float air = airSpring.Step(grounded || player.Hanging || player.Swimming || player.VineClimbing || player.Skiff ? 0 : 1, 4, .8f, dt);
             float hipDrop = 0; bool plantFeet = true;
 
             // ---- air ----
@@ -221,9 +224,12 @@ namespace TinyWorld
             }
             if (player.Skiff)
             {
-                hipsRot = E(0); chestRot = E(9); thL = thR = E(-70); shL = shR = E(84);
-                float stroke = Mathf.Sin(player.Skiff.Stroke) * 21;
-                uaL = uaR = E(-43 + stroke); faL = faR = E(-52 + stroke); plantFeet = false; hipDrop = -.34f;
+                float pull = player.Skiff.Pull, recovery = player.Skiff.Recovery;
+                hipsRot = E(0); chestRot = E(9 + 7 * pull); headRot = E(-4 - 3 * pull);
+                thL = thR = E(-70); shL = shR = E(84); ftL = ftR = E(-12);
+                uaL = E(-43 + 20 * pull, 0, -9); uaR = E(-43 + 20 * pull, 0, 9);
+                faL = faR = E(-52 - 15 * pull + 8 * recovery);
+                plantFeet = false; hipDrop = -.34f;
             }
             if (player.Dashing)
             {
@@ -255,8 +261,10 @@ namespace TinyWorld
 
             // ---- apply: joints ease toward the new pose so state changes flow instead of popping ----
             if (player.Zipping) { chestRot = E(-20); thL = E(-60, 0, -6); thR = E(-20, 0, 6); shL = E(95); shR = E(50); plantFeet = false; }
-            var targets = new[] { hipsRot, chestRot, thL, thR, shL, shR, ftL, ftR, uaL, uaR, faL, faR };
-            var joints = new[] { hips, chest, thighL, thighR, shinL, shinR, footL, footR, upperArmL, upperArmR, forearmL, forearmR };
+            targets[0] = hipsRot; targets[1] = chestRot;
+            targets[2] = thL; targets[3] = thR; targets[4] = shL; targets[5] = shR;
+            targets[6] = ftL; targets[7] = ftR; targets[8] = uaL; targets[9] = uaR;
+            targets[10] = faL; targets[11] = faR;
             if (blended == null) blended = (Quaternion[])targets.Clone();
             float blend = player.Action == "Roll" || player.FlipProgress > 0 ? 1 : 1 - Mathf.Exp(-poseBlend * dt);
             for (int i = 0; i < joints.Length; i++) { blended[i] = Quaternion.Slerp(blended[i], targets[i], blend); joints[i].localRotation = blended[i]; }
@@ -285,7 +293,7 @@ namespace TinyWorld
             float reach = Mathf.Max(LegHeight(blended[0], blended[2], blended[4]), LegHeight(blended[0], blended[3], blended[5]));
             float bob = plantFeet ? Mathf.Max(reach - HipHeight, -.07f - .05f * run - .45f * crouch - .2f * impact) : 0;
             if (!plantFeet && !player.Swimming && !player.Hanging) bob = Mathf.Max(bob, (reach - HipHeight) * .5f);
-            hips.localPosition = hipsRest + Vector3.up * (bob + hipDrop + breath * .006f * (1 - moving));
+            hips.localPosition = hipsRest + Vector3.up * (player.Skiff ? hipDrop : bob + hipDrop + breath * .006f * (1 - moving));
 
             // Squash and stretch on the whole rig, volume-preserving.
             float st = stretch + (air > .5f ? Mathf.Clamp(player.VerticalSpeed * .006f, -.04f, .06f) : 0);

@@ -63,6 +63,12 @@ namespace TinyWorld
             var toPlayer=visitor.transform.position-transform.position;
             if (toPlayer.sqrMagnitude>125*125) return;
             if (Time.time>=speakingUntil) Speech=null;
+            if(pace<=0){
+                var gaze=Vector3.ProjectOnPlane(toPlayer,Vector3.up);
+                if(Speech!=null && gaze.sqrMagnitude>.001f)body.rotation=Quaternion.RotateTowards(body.rotation,Quaternion.LookRotation(gaze),dt*140);
+                head.localRotation=Quaternion.Euler(Speech==null?0:Mathf.Sin(Time.time*4)*3,0,0);
+                return;
+            }
             Vector3 goal=(outbound?end:home)-transform.position; goal.y=0;
             Vector3 forward=goal.normalized;
             Vector3 other=Vector3.ProjectOnPlane(toPlayer, Vector3.up);

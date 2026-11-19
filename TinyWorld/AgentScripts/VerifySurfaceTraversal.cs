@@ -30,7 +30,8 @@ public static class VerifySurfaceTraversal
         {
             Box(new Vector3(0,-.25f,0),new Vector3(25,.5f,25));await Place(new Vector3(0,.05f,-4));await Wait(150);
             bool fired=p.Hand.FireAt(p.Hand.Origin+Vector3.up*30);Check("empty sky shot launches",fired&&p.Hand.Flying);await Wait(450);Check("empty shot returns at reach limit",!p.Hand.Flying&&!p.Hand.Attached);
-            var far=Box(new Vector3(0,2,5),new Vector3(3,4,.2f));await Place(new Vector3(0,.05f,-4));p.Hand.FireAt(origin+new Vector3(0,1.3f,5));await Wait(350);Check("nine metre shot attaches",p.Hand.AttachedCollider==far.GetComponent<Collider>()&&p.Hand.maxReach==10.8f);
+            p.TestFireHeld=true;
+            var far=Box(new Vector3(0,2,8.7f),new Vector3(3,4,.2f));await Place(new Vector3(0,.05f,-4));p.Hand.FireAt(origin+new Vector3(0,1.3f,5));await Wait(350);Check("12.7 metre shot attaches",p.Hand.AttachedCollider==far.GetComponent<Collider>()&&p.Hand.maxReach==12.96f);
             await Place(new Vector3(0,.05f,-4));var near=Box(new Vector3(0,2,0),new Vector3(3,4,.2f));p.Hand.FireAt(origin+new Vector3(0,1.3f,5));await Wait(250);Check("first collision wins over aimed surface",p.Hand.AttachedCollider==near.GetComponent<Collider>());
             Object.DestroyImmediate(near);await Place(new Vector3(0,.05f,-4));p.Hand.FireAt(origin+new Vector3(0,1.3f,5));await Wait(35);near=Box(new Vector3(0,2,.5f),new Vector3(3,4,.2f));await Wait(250);Check("flight detects newly obstructed path",p.Hand.AttachedCollider==near.GetComponent<Collider>());Object.DestroyImmediate(near);
             await Place(new Vector3(0,.05f,-4));p.Hand.FireAt(p.Hand.Origin+Vector3.up*30);p.Hand.Release();Check("release cancels shot in flight",!p.Hand.Flying&&!p.Hand.Attached);
@@ -61,7 +62,7 @@ public static class VerifySurfaceTraversal
             }
             checks.Add(new{test="six generated city vines climb and top out",passed=caught==6&&climbed==6,caught,climbed,examples});
         }
-        finally{Drive(Vector2.zero);p.Teleport(spawn);p.TestInput=false;Object.DestroyImmediate(root);}
+        finally{Drive(Vector2.zero);p.Teleport(spawn);p.TestFireHeld=false;p.TestInput=false;Object.DestroyImmediate(root);}
         return checks;
     }
 }

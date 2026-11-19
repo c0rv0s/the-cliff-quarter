@@ -30,11 +30,16 @@ namespace TinyWorld
                 Yaw += delta.x;
                 Pitch = Mathf.Clamp(Pitch + delta.y * (invertY ? 1 : -1), -70, 62);
             }
+            transform.rotation = Quaternion.Euler(Pitch, Yaw, 0);
+        }
+        // The motor steers from the current orbit in Update. Follow its final position before Cinemachine renders.
+        void LateUpdate()
+        {
             eye = Mathf.Lerp(eye, player.Crouched || player.Action == "Roll" ? .8f : 1.25f, 1 - Mathf.Exp(-10 * Time.deltaTime));
             Vector3 target = player.transform.position + Vector3.up * eye;
             Vector3 deltaPosition = target - transform.position;
             if (deltaPosition.sqrMagnitude > 64) rig.OnTargetObjectWarped(transform, deltaPosition);
-            transform.SetPositionAndRotation(target, Quaternion.Euler(Pitch, Yaw, 0));
+            transform.position = target;
             float speed = player.ControlsEnabled ? Mathf.InverseLerp(player.walkSpeed, 15, player.Speed) : 0;
             float fov = Inspecting ? 40 : Mathf.Lerp(64, 77, Mathf.SmoothStep(0, 1, speed));
             rig.Lens.FieldOfView = Mathf.Lerp(rig.Lens.FieldOfView, fov, 1 - Mathf.Exp(-5 * Time.unscaledDeltaTime));

@@ -17,6 +17,7 @@ namespace TinyWorld
         }
         public static RiverWaterVolume At(Vector3 point)
         {
+            if (DungeonInterior.Contains(point)) return null;
             foreach (var water in Active) if (water.Contains(point)) return water;
             return null;
         }

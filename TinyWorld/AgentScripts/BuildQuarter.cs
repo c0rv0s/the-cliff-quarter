@@ -15,6 +15,13 @@ using Object = UnityEngine.Object;
 // vegetation, collectibles and ambient life. Source scenes are not modified.
 public static class BuildQuarter
 {
+    const int WildlandsShift = TinyWorld.EditorArt.BuildQuarterLandmarks.WildlandsShiftSouth;
+    static Rect TravelBounds => Rect.MinMaxRect(-640, -1160-WildlandsShift, 640, 870);
+    static void SetSeaLimits(RiverWaterVolume sea)
+    {
+        sea.transform.position = new Vector3(0, 0, -150-WildlandsShift*.5f);
+        sea.size = new Vector3(1400, 24, 2200+WildlandsShift);
+    }
     const string SourceScene = "Assets/Scenes/RiverCityCliffside.unity";
     const string ScenePath = "Assets/Scenes/CliffQuarter.unity";
     const string GeoPath = "Assets/Geometry/Quarter";
@@ -117,6 +124,7 @@ public static class BuildQuarter
         StartGroup("Southern reach"); SouthernReach(); FinishGroup();
         StartGroup("Stream cascade"); Cascade(); FinishGroup();
         StartGroup("Harbour"); Port(); FinishGroup();
+        StartGroup("Canal market"); CanalMarket(); FinishGroup();
         StartGroup("Ship companionways"); ShipCompanionways(); FinishGroup();
         StartGroup("River channel and quays");
         RiverBed();
@@ -197,7 +205,7 @@ public static class BuildQuarter
         Life();
         ConfigureScene();
         var volume = new GameObject("River water volume").AddComponent<RiverWaterVolume>();
-        volume.transform.position = new Vector3(0, 0, 250); volume.size = new Vector3(1400, 24, 1400);
+        SetSeaLimits(volume);
         // The farm stream: short boxes along its deep channel, each holding its own surface height.
         var stream = new GameObject("Stream water volumes").transform;
         var path = StreamPath();
@@ -214,6 +222,7 @@ public static class BuildQuarter
         var start = GameObject.Find("Route · Saffron wall and swing alley").transform.position;
         player.transform.position = new Vector3(start.x - 1, start.y + .15f, 23.5f);
         player.ropeMaterial = brass;
+        player.travelBounds=TravelBounds;
         var orbit = Object.FindAnyObjectByType<WandererCamera>(); orbit.transform.position = player.transform.position + Vector3.up * 1.25f; orbit.transform.rotation = Quaternion.Euler(3, 20, 0);
         var rig = Object.FindAnyObjectByType<CinemachineCamera>(); rig.Lens.FarClipPlane = 900; rig.Lens.NearClipPlane = .15f;
         Camera.main.farClipPlane = 900; Camera.main.nearClipPlane = .15f;
@@ -768,6 +777,7 @@ public static class BuildQuarter
 
     // ---------- uplands: west mountains, east farmland ----------
     const float UStep = 3, UMax = 174;
+    static float UplandWidth(int side) => side > 0 ? 261 : UMax;
     // GLSL-style smoothstep (Mathf.SmoothStep interpolates between its first two arguments instead).
     static float Edge01(float a, float b, float x) => Mathf.SmoothStep(0, 1, Mathf.InverseLerp(a, b, x));
     static Vector3 Crest(int side, float z) => CliffProfile(side, z, 30)[30];
@@ -845,9 +855,14 @@ public static class BuildQuarter
             // Deep enough to swim, shoaling to a shallow lip at the crest.
             h = Mathf.Lerp(h, w - Mathf.Lerp(.3f, 1.8f, Edge01(2, 16, u)), 1 - Edge01(4.5f, 9, d));
         }
-        if (side < 0 && walks != null)
-            h = CutWalks(new Vector2(WestCrestX(z) - u,z),h);
-        return Mathf.Lerp(h, -10, Edge01(UMax - 24, UMax, u));
+        if (side < 0 && walks != null) {
+            float worldX = WestCrestX(z) - u;
+            float rear = (WestCrestX(118)-80) - worldX, flank = Mathf.Abs(z-118);
+            float edge = Mathf.Max(flank-49, Mathf.Max(-17-rear,rear-85));
+            h = Mathf.Lerp(Mathf.Min(h,167.4f), h, Edge01(0,7,edge));
+            h = CutWalks(new Vector2(worldX,z),h);
+        }
+        return Mathf.Lerp(h, -10, Edge01(UplandWidth(side) - 24, UplandWidth(side), u));
     }
     static void InitPads()
     {
@@ -869,7 +884,7 @@ public static class BuildQuarter
     static Vector3 UP(int side, float u, float z) => UplandPoint(side, u, z);
     static void Upland(int side)
     {
-        int zCuts = Mathf.RoundToInt((TerrainEnd - TerrainStart) / TerrainStep), uCuts = Mathf.RoundToInt(UMax / UStep);
+        int zCuts = Mathf.RoundToInt((TerrainEnd - TerrainStart) / TerrainStep), uCuts = Mathf.RoundToInt(UplandWidth(side) / UStep);
         var grid = new Vector3[zCuts + 1, uCuts + 1];
         for (int i = 0; i <= zCuts; i++)
         {
@@ -1925,9 +1940,9 @@ public static class BuildQuarter
     }
     static void Anchor(Vector3 p)
     {
-        if (!refreshingMountains)
+        if (!refreshingMountains || group.name=="Mountain sanctuaries")
         {
-            var root = new GameObject("Brass swing ring " + (++anchors)); root.transform.SetParent(city, false); root.transform.position = p;
+            var root = new GameObject("Brass swing ring " + (++anchors)); root.transform.SetParent(group.name=="Mountain sanctuaries"?group:city, false); root.transform.position = p;
             root.AddComponent<TraversalAnchor>();
         }
         var old = frame; frame = Matrix4x4.TRS(p, Quaternion.identity, Vector3.one);
@@ -2246,6 +2261,7 @@ public static class BuildQuarter
         public Vector3 a,b;
         public float width;
         public WalkKind kind;
+        public bool royalStair;
     }
     static List<Walk> walks;
     static readonly Dictionary<float,float> crestCache = new();
@@ -2271,12 +2287,16 @@ public static class BuildQuarter
         var fork=new Vector3(-128,132,61);
         Line(4,entrance,(-99,103,148,Pth),(-114,113,124,St),(-104,118,104,St),(-116,126,79,St),(-128,132,61,St));
         Line(3.6f,fork,(-135,132,52,Pth),(-144.8f,132.16f,34,Pth),(-144.8f,132.16f,24,Pth));
-        Line(4,fork,(-135,141,85,St),(-125,152,111,St),(-142,158.5f,94,St),(-144,164,67,St),(-164,168,61,St),(-171.93f,168,63.5f,Pth));
+        int firstRoyalFlight=walks.Count;
+        Line(4.8f,fork,(-143,138,58,St),(-165,146,57,St),(-185,152,58,St),(-193,155,64,St),
+            (-180,159.5f,70,St),(-158,165,70,St),(-145,168,70,St),(-132,168,72,Pth),(-132,168.16f,78.3f,Pth));
+        foreach(var w in walks.Skip(firstRoyalFlight))w.royalStair=true;
         Line(3.8f,entrance,(-99,103,183,Pth),(-107,109.5f,205,St),(-119,110.5f,225,Br),(-131,112.2f,236,Pth));
         var col=new Vector3(-131,112.2f,236);
-        Line(4,col,(-145,119,255,St),(-162,127,245,St),(-178,135,253,St),(-185,137,247,St),(-192,137.6f,229,Br),(-197,142,213,St),(-207,146,218,St),(-204,146,232,St),(-203,146.18f,263,Pth));
+        Line(4,col,(-145,119,255,St),(-162,127,245,St),(-178,135,253,St),(-185,137,247,St),(-192,137.6f,229,Br),(-197,142,213,St),(-207,146,218,St),(-204,146,232,St),(PadCenter(-1,1).x,146.02f,237.5f,Pth));
         // The upper gallery skirts the temple podium and climbs to the astronomical gardens.
-        Line(3.7f,new Vector3(-164,168,61),(-186,168,59,Pth),(-199,168,72,Pth),(-201,169,150,Pth),(-203,170,164,Pth),(-210,170.7f,180,Br),(-222,180,197,St),(-226,186,214,St),(-218,194.13f,224,St),(-212,194.13f,219,Pth));
+        Line(3.7f,new Vector3(-193,155,64),(-209,161,63,St),(-231,168.16f,69,St));
+        Line(3.7f,new Vector3(-204,168.16f,167),(-206,170,172,St),(-210,170.7f,180,Br),(-222,180,197,St),(-226,186,214,St),(-218,194.13f,224,St),(-212,194.13f,219,Pth));
     }
     static float CutWalks(Vector2 point,float natural)
     {
@@ -2288,15 +2308,21 @@ public static class BuildQuarter
             float distance=(point-Vector2.Lerp(a,b,t)).magnitude;
             if(distance>best || distance>w.width/2+9)continue;
             best=distance;
+            if(w.royalStair){
+                float inset=Mathf.Min(w.width*.56f/d.magnitude,.21f);
+                t=Mathf.InverseLerp(inset,1-inset,t);
+            }
             float grade=Mathf.Lerp(w.a.y,w.b.y,t);
             float hollow=w.kind==WalkKind.Bridge?Mathf.Sin(t*Mathf.PI)*8:0;
-            height=grade-.48f-hollow;
+            height=grade-(w.royalStair?1.45f:.48f)-hollow;
             weight=1-Edge01(w.width/2+2.4f,w.width/2+9,distance);
         }
         return Mathf.Lerp(natural,height,weight);
     }
     static bool refreshingMountains;
-    public static object RefreshSanctuaries()
+    public static object RefreshSanctuaries() => RefreshTerrain(false);
+    public static object RefreshRoyalApproach() => RefreshTerrain(true);
+    static object RefreshTerrain(bool royalApproachOnly)
     {
         var scene=EditorSceneManager.GetActiveScene();
         if(scene.name!="CliffQuarter" || scene.isDirty || EditorApplication.isPlaying)throw new Exception("Open the saved CliffQuarter in Edit mode.");
@@ -2309,13 +2335,15 @@ public static class BuildQuarter
         refreshingMountains=true;
         try
         {
-            void Bake(string name,Action draw)
+            void Bake(string name,Action draw,Material only=null)
             {
                 group=city.Find(name);if(!group){group=new GameObject(name).transform;group.SetParent(city,false);}
                 batches=new();frame=Matrix4x4.identity;tint=Color.white;smooth=ghost=false;wind=0;aoBase=float.NaN;
-                var unused=group.Cast<Transform>().Where(t=>t.name.Contains(" · ")&&t.GetComponent<MeshFilter>()).ToList();
-                foreach(var door in group.GetComponentsInChildren<QuarterSwingDoor>(true))Object.DestroyImmediate(door.gameObject);
-                foreach(var school in group.GetComponentsInChildren<RiverLife>(true))Object.DestroyImmediate(school.gameObject);
+                var unused=group.Cast<Transform>().Where(t=>t.name.Contains(" · ")&&t.GetComponent<MeshFilter>()&&(!only || t.GetComponent<MeshRenderer>().sharedMaterial==only)).ToList();
+                if(!only){
+                    foreach(var door in group.GetComponentsInChildren<QuarterSwingDoor>(true))Object.DestroyImmediate(door.gameObject);
+                    foreach(var school in group.GetComponentsInChildren<RiverLife>(true))Object.DestroyImmediate(school.gameObject);
+                }
                 draw();
                 foreach(var entry in batches.Values)
                 {
@@ -2341,7 +2369,26 @@ public static class BuildQuarter
                 }
                 foreach(var retired in unused)Object.DestroyImmediate(retired.gameObject);
             }
-            Bake("Western uplands",()=>Upland(-1));Bake("Mountain sanctuaries",Mountains);
+            Bake("Western uplands",()=>Upland(-1));
+            if(!royalApproachOnly)Bake("Eastern uplands",()=>Upland(1));
+            Physics.SyncTransforms();
+            foreach(var anchor in city.GetComponentsInChildren<TraversalAnchor>())
+                if(anchor.transform.parent==city.Find("Mountain sanctuaries") || (anchor.transform.parent==city && anchor.transform.position.x < -105 && anchor.transform.position.y>150))
+                    Object.DestroyImmediate(anchor.gameObject);
+            Bake("Mountain sanctuaries",Mountains);
+            foreach(var stone in city.GetComponentsInChildren<Sunstone>()){
+                var target=spots.FirstOrDefault(s=>s.place==stone.place && s.fixedSpot);
+                if(target.place!=null)stone.transform.position=target.p+Vector3.up*1.05f;
+            }
+            var sea=GameObject.Find("River water volume").GetComponent<RiverWaterVolume>();
+            Object.FindAnyObjectByType<WandererMotor>().travelBounds=TravelBounds;
+            SetSeaLimits(sea);
+            if(royalApproachOnly){
+                Bake("Southern reach",SouthernSeabed,bedMat);
+                AssetDatabase.SaveAssets();Physics.SyncTransforms();EditorSceneManager.SaveScene(scene);
+                return walks.Count(w=>w.royalStair);
+            }
+            OpenMarketSluices();Bake("Canal market",CanalMarket);
             OpenExistingCrossings();
             var farm=city.Find("Farmlands");farm.gameObject.SetActive(false);
             try{
@@ -2434,13 +2481,22 @@ public static class BuildQuarter
         var d=w.b-w.a;float len=new Vector2(d.x,d.z).magnitude;
         var dir=new Vector3(d.x,0,d.z).normalized;var side=Vector3.Cross(Vector3.up,dir);
         // Round, level turnouts connect the flights without railings across a junction.
-        tint=P("E7D6B9");Cylinder(w.a+Vector3.down*.36f,w.width*.60f,.37f,paving,true,20);
+        float footing=w.royalStair?3.7f:0;
+        tint=P("E7D6B9");Cylinder(w.a+Vector3.down*(.36f+footing),w.width*.60f,.37f+footing,paving,true,20);
         float inset=Mathf.Min(w.width*.56f,len*.21f);
         var a=w.a+dir*inset;var b=w.b-dir*inset;
         if(w.kind==WalkKind.Stairs)
         {
             int steps=Mathf.Max(2,Mathf.CeilToInt(Mathf.Abs(b.y-a.y)/.18f));float run=(len-2*inset)/steps;
             var old=frame;frame=Matrix4x4.TRS(a,Quaternion.LookRotation(dir),Vector3.one);
+            if(w.royalStair){
+                foreach(int sign in new[]{-1,1}){
+                    float x=sign*(w.width*.5f-.08f);
+                    var low=new Vector3(x,-.12f,0);var high=new Vector3(x,b.y-a.y-.12f,len-2*inset);
+                    QuadN(low,high,high+Vector3.down*3.7f,low+Vector3.down*3.7f,Vector3.right*sign,trim);
+                    Beam(low+Vector3.up*.27f,high+Vector3.up*.27f,.27f,trim,true);
+                }
+            }
             for(int j=0;j<steps;j++){float h=(b.y-a.y)*(j+.5f)/steps;tint=j%5==0?P("D7C19F"):P("E9D9BD");Box(new Vector3(0,h-.42f,(j+.5f)*run),new Vector3(w.width,.84f,run+.008f),paving);}
             frame=old;
             var l=side*w.width*.49f;
@@ -2464,26 +2520,27 @@ public static class BuildQuarter
                 }
             }
         }
-        Cylinder(w.b+Vector3.down*.38f,w.width*.59f,.385f,paving,true,20);
+        Cylinder(w.b+Vector3.down*(.38f+footing),w.width*.59f,.385f+footing,paving,true,20);
         tint=Color.white;
     }
     static void Mountains()
     {
         const int W = -1;
         var top = GrandStairTop(W); var landing = UP(W, 14, top.z);
-        var temple = PadCenter(W, 0); var palace = PadCenter(W, 1); var theatre = PadCenter(W, 2); var peak = PadCenter(W, 3); var colossus = PadCenter(W, 4);
+        var palace = PadCenter(W, 0); var temple = PadCenter(W, 1); var theatre = PadCenter(W, 2); var peak = PadCenter(W, 3); var colossus = PadCenter(W, 4);
         foreach(var walk in walks) BuildWalk(walk);
         Acropolis(temple);
         Palace(palace);
         Theatre(theatre);
         Armillary(peak);
         Colossus(colossus);
-        Aqueduct(W, temple + new Vector3(-8, -1, 44), palace + new Vector3(-6, 0, -42));
+        Aqueduct(W, palace + new Vector3(-8, -1, 44), temple + new Vector3(-27, 0, -31));
         // Groves on the slopes.
         for (int i = 0; i < 140; i++)
         {
             float u = D(24, 160), z = D(-50, 395); var p = UP(W, u, z);
-            if (Near(W, u, z, 12) || walks.Any(w => {
+            float rear=palace.x-p.x;
+            if ((Mathf.Abs(z-palace.z)<53 && rear> -18 && rear<90) || Near(W, u, z, 12) || walks.Any(w => {
                 var d = w.b-w.a; d.y=0; var v=p-w.a; v.y=0;
                 return (v-d*Mathf.Clamp01(Vector3.Dot(v,d)/d.sqrMagnitude)).sqrMagnitude<42;
             })) continue;
@@ -2638,61 +2695,321 @@ public static class BuildQuarter
         for (int i = 0; i < 4; i++) Anchor(c + new Vector3(i % 2 == 0 ? -12 : 12, e - 2.5f, i < 2 ? -38 : 38));
         frame = old; tint = Color.white;
     }
-    // Palace of the Winds: stacked arcaded terraces, a great tiled dome, four minarets and a reflecting pool.
     static void Palace(Vector3 c)
     {
-        var old = frame; frame = Matrix4x4.Translate(c);
-        var saveStyle = style; style = new Style { look = Look.Moorish, wall = P("F3E7D3"), accent = P("2E9C9C"), window = 3, tiles = true };
-        shutterTint = P("7A5340");
-        float[] w = { 64, 46, 30 }, d = { 52, 38, 26 }, h = { 7, 7, 8 }; float y = 0;
-        tint = P("E9D9BB"); Box(new Vector3(0, -4, 0), new Vector3(70, 8.2f, 58), trim, true);
-        for (int k = 0; k < 3; k++)
-        {
-            tint = style.wall; Box(new Vector3(0, y + h[k] * .5f, 0), new Vector3(w[k], h[k], d[k]), plaster, true);
-            tint = style.accent; Box(new Vector3(0, y + h[k] - .7f, 0), new Vector3(w[k] + .1f, .5f, d[k] + .1f), trim);
-            tint = Color.white; Box(new Vector3(0, y + h[k] + .15f, 0), new Vector3(w[k] + .6f, .3f, d[k] + .6f), trim, true);
-            // Arcades on all four faces of each terrace.
-            for (int f = 0; f < 4; f++)
-            {
-                var saved = frame; frame *= Matrix4x4.TRS(new Vector3(0, y, 0), Quaternion.Euler(0, f * 90, 0), Vector3.one);
-                float span = f % 2 == 0 ? w[k] : d[k], depthHalf = f % 2 == 0 ? d[k] * .5f : w[k] * .5f;
-                int n = Mathf.FloorToInt(span / 4.2f);
-                for (int i = 0; i < n; i++) Window(new Vector3(-span * .5f + (i + .5f) * span / n, 1.2f, -depthHalf - .02f), 1.6f, h[k] - 3.4f, false, 3);
-                if (k < 2) { Parapet(span, h[k], -depthHalf + .2f); }
-                frame = saved;
+        var previous=frame;
+        frame=Matrix4x4.TRS(c,Quaternion.Euler(0,-90,0),Vector3.one);
+        var ivory=P("F1E1C5"); var enamel=P("327C80");
+        const float court=.16f, hall=8.55f;
+        tint=ivory;
+        Box(new(0,-4.92f,-2),new(79,10.16f,102),trim,true);
+        // Open gate, side galleries and two shallow garden pools frame the approach.
+        foreach(int side in new[]{-1,1}){
+            Box(new(side*24,1.56f,-52),new(30,2.8f,1.25f),trim,true);
+            Box(new(side*9.1f,4.05f,-52),new(2.1f,7.8f,2.4f),trim,true);
+            Obelisk(new(side*9.1f,7.95f,-52),3.5f);
+            tint=ivory;
+            if(side<0){
+                Box(new(-37,2,-45.95f),new(1,4,6.1f),plaster,true);
+                Box(new(-37,2,-26.95f),new(1,4,19.9f),plaster,true);
+            }else Box(new(37,2,-33),new(1,4,32),plaster,true);
+            for(int j=0;j<4;j++){
+                var p=new Vector3(side*28,court,-44+j*7.5f);
+                Column(p,4.8f,.48f);
+                if(j<3){
+                    var gallery=frame; frame*=Matrix4x4.TRS(p+new Vector3(0,4.75f,3.75f),Quaternion.Euler(0,90,0),Vector3.one);
+                    Arch(Vector3.zero,3.4f,2.65f,.48f,1.1f,trim,true);frame=gallery;
+                }
             }
-            y += h[k];
-            if (k < 2) for (int i = 0; i < 10; i++) { float a = i * Mathf.PI * .2f; Bougainvillea(new Vector3(Mathf.Cos(a) * w[k + 1] * .62f, y + .4f, Mathf.Sin(a) * d[k + 1] * .62f), new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)), D(1.4f, 2.2f)); }
-            if (k < 2) for (int i = 0; i < 6; i++) Tree(new Vector3(D(-w[k] * .45f, w[k] * .45f), y, (i % 2 == 0 ? -1 : 1) * (d[k + 1] * .5f + 2.5f)), D(.8f, 1.1f), 1);
+            Box(new(side*32.5f,7.87f,-32.75f),new(10,.58f,26.8f),trim,true);
+            tint=P("D7BD96");Box(new(side*19,.34f,-31),new(6.7f,.36f,22),trim,true);
+            tint=enamel;Box(new(side*19,.55f,-31),new(5.7f,.07f,20.8f),shutter);
+            tint=ivory;
+            for(int j=0;j<3;j++) Cypress(new(side*24,court,-40+j*9),5+j%2);
         }
-        // Drum and great dome.
-        tint = style.wall; Cylinder(new Vector3(0, y, 0), 12, 5, plaster, true, 32);
-        for (int i = 0; i < 16; i++) { var saved = frame; frame *= Matrix4x4.TRS(new Vector3(0, y, 0), Quaternion.Euler(0, i * 22.5f, 0), Vector3.one); Window(new Vector3(0, 1.3f, -12.02f), 1.1f, 2.2f, false, 0); frame = saved; }
-        tint = Color.white; Cylinder(new Vector3(0, y + 5, 0), 12.6f, .5f, trim, true, 32);
-        tint = style.accent; Dome(new Vector3(0, y + 5.5f, 0), 12.2f, 13, trim, true, 36);
-        tint = Palette.Brass; Cylinder(new Vector3(0, y + 18.2f, 0), .5f, 2.5f, brass, true, 10); Ellipsoid(new Vector3(0, y + 21.3f, 0), Vector3.one * .9f, brass, 10, 6);
-        Lathe(new Vector3(0, y + 22, 0), new[] { new Vector2(.12f, 0), new Vector2(.02f, 2.5f) }, 6, brass);
-        Spot(c + new Vector3(0, y + .2f, 13.5f), "Dome terrace of the Palace of Winds", true);
-        // Minarets with balconies and onion caps.
-        foreach (var m in new[] { new Vector3(-33, 0, -27), new Vector3(33, 0, -27), new Vector3(-33, 0, 27), new Vector3(33, 0, 27) })
-        {
-            tint = style.wall; Cylinder(m + Vector3.down * 4, 2.2f, 4, plaster, true, 12); Cylinder(m, 1.7f, 30, plaster, true, 12, 1.4f);
-            foreach (float b in new[] { 12f, 24f }) { tint = Color.white; Cylinder(m + Vector3.up * b, 2.6f, .4f, trim, true, 16); tint = style.accent; Cylinder(m + Vector3.up * (b + .4f), 2.5f, .9f, trim, false, 16); }
-            tint = style.accent; Lathe(m + Vector3.up * 30, new[] { new Vector2(1.5f, 0), new Vector2(2.2f, 1.4f), new Vector2(1.6f, 2.8f), new Vector2(.5f, 4.2f), new Vector2(.04f, 5.6f) }, 16, trim, true);
-            tint = Palette.Brass; Cylinder(m + Vector3.up * 35.5f, .08f, 1.6f, brass, false, 6);
-            Anchor(c + m + new Vector3(0, 22, m.z < 0 ? -4 : 4));
+        tint=P("D6B091");
+        for(int j=0;j<10;j++)Box(new(0,.173f,-50+j*3.3f),new(13,.024f,.14f),shutter);
+        tint=ivory;
+        Flight(19,-17,-.5f,court,hall);
+        foreach(int side in new[]{-1,1}){
+            for(int j=0;j<6;j++) {
+                float t=(j+.5f)/6;
+                Box(new(side*10.4f,4.2f*t+.54f,-17+16.5f*t),new(1.25f,8.4f*t+1.1f,2.76f),trim,true);
+            }
         }
-        // Reflecting pool and gateway (pishtaq) in front.
-        tint = style.wall; Box(new Vector3(0, -.2f, -44), new Vector3(14, .6f, 30), trim, true);
-        var waterTint = tint; tint = Color.white; Box(new Vector3(0, .02f, -44), new Vector3(11, .1f, 27), water, false); tint = waterTint;
-        for (int i = 0; i < 4; i++) { tint = Color.white; Cylinder(new Vector3(0, 0, -54 + i * 7), .6f, .9f, trim, true, 12); tint = Palette.Brass; Ellipsoid(new Vector3(0, 1.2f, -54 + i * 7), new Vector3(.35f, .5f, .35f), brass, 8, 5); }
-        foreach (int s in new[] { -1, 1 }) { tint=style.wall; Box(new Vector3(s*9.5f,-2.9f,-44),new Vector3(2.6f,6,27),trim,true); }
-        foreach (int s in new[] { -1, 1 }) for (int i = 0; i < 5; i++) Tree(new Vector3(s * 9.5f, .11f, -56 + i * 6), D(.85f, 1.1f), i % 2 == 0 ? 2 : 1);
-        tint = style.wall; Box(new Vector3(0, 7, -61), new Vector3(16, 14, 4), plaster, true);
-        var gate = frame; frame *= Matrix4x4.Translate(new Vector3(0, 0, -63.02f)); Window(Vector3.up * .3f, 7, 8, false, 3); frame = gate;
-        tint = style.accent; Box(new Vector3(0, 13.4f, -61), new Vector3(16.4f, .8f, 4.4f), trim, true);
-        Parapet(16, 14, -61);
-        style = saveStyle; frame = old; tint = Color.white;
+        Box(new(0,4.32f,23),new(63,8.46f,47.2f),trim,true);
+        // Stepped cornices, carved fanlight and paired standards over the royal stair.
+        tint=ivory;
+        foreach(float x in new[]{-6.8f,6.8f}){
+            Column(new(x,hall,1.08f),13.8f,.78f);
+            Box(new(x,22.6f,1.08f),new(2.48f,.6f,2.4f),trim,true);
+        }
+        Box(new(0,23.15f,1.18f),new(16.1f,.65f,2.65f),trim,true);
+        tint=enamel;Box(new(0,23.64f,1.35f),new(16.5f,.35f,2.42f),shutter);
+        tint=ivory;
+        Tri(new(-8.4f,23.81f,-.04f),new(0,28.85f,-.04f),new(8.4f,23.81f,-.04f),trim);
+        Tri(new(8.4f,23.81f,-.04f),new(0,28.85f,-.04f),new(-8.4f,23.81f,-.04f),trim);
+        tint=Palette.Brass;
+        Beam(new(-8.65f,23.74f,-.15f),new(0,29,-.15f),.24f,brass);
+        Beam(new(0,29,-.15f),new(8.65f,23.74f,-.15f),.24f,brass);
+        Torus(new(0,25.52f,-.21f),.94f,.12f,brass,24);
+        foreach(float x in new[]{-26.1f,26.1f,-13.6f,13.6f}){
+            tint=Palette.Brass;Beam(new(x-1.25f,23,2),new(x+1.25f,23,2),.14f,brass);
+            tint=x<0?enamel:P("A25447");
+            var a=new Vector3(x-1.06f,22.95f,1.94f);var b=a+Vector3.right*2.12f;
+            QuadN(a,b,b+Vector3.down*6.4f,a+Vector3.down*6.4f,Vector3.back,cloth,false);
+            Tri(b+Vector3.down*6.4f,new(x,14.95f,1.91f),a+Vector3.down*6.4f,cloth);
+            tint=Palette.Brass;Box(new(x,18.18f,1.88f),new(1.9f,.16f,.04f),brass);
+        }
+        tint=ivory;
+        // Throne hall: the upper arcade admits daylight along both side aisles.
+        const float eave=29;
+        DoorWall(62,hall,eave,3,7.2f,11.4f,plaster,1.1f);
+        Door("Doors of the royal audience",3,hall,7.2f,11.4f,0,P("77503E"),true);
+        tint=enamel;Arch(new(0,hall+8.05f,2.15f),4.12f,4.3f,.61f,1,trim,true);
+        tint=ivory;
+        foreach(int side in new[]{-1,1}){
+            Column(new(side*4.46f,hall,2.22f),8.15f,.48f);
+            Box(new(side*30.6f,hall+2.5f,24),new(1.3f,5,42),plaster,true);
+            for(int j=0;j<6;j++){
+                float z=5+j*7.6f;
+                Column(new(side*30.6f,hall+5,z),8.5f,.74f);
+                Column(new(side*15.4f,hall,z),16.65f,.83f);
+                if(j<5){
+                    var basis=frame;frame*=Matrix4x4.TRS(new(side*30.6f,hall+13.35f,z+3.8f),Quaternion.Euler(0,90,0),Vector3.one);
+                    Arch(Vector3.zero,3.26f,4.1f,.82f,1.7f,trim,true);frame=basis;
+                }
+            }
+            Box(new(side*30.6f,27.78f,24),new(1.65f,2.44f,43),trim,true);
+            for(int j=0;j<3;j++){
+                var p=new Vector3(side*(10+j*7.2f),hall+1.4f,2.37f);
+                Window(p,2.1f,8.3f,false,3);
+            }
+        }
+        tint=ivory;Box(new(0,(eave+hall)/2,45),new(62,eave-hall,1.4f),plaster,true);
+        Box(new(0,eave+.25f,24),new(64,.85f,45),trim,true);
+        tint=enamel;Box(new(0,eave+1,24),new(63.5f,.68f,44.5f),shutter,true);
+        tint=ivory;Cylinder(new(0,eave+1.34f,24),16,7,trim,true,36);
+        tint=enamel;Dome(new(0,eave+8.34f,24),16.8f,15.5f,shutter,true,40);
+        tint=Palette.Brass;
+        Cylinder(new(0,eave+23.3f,24),.75f,3.8f,brass,true,12,.12f);
+        for(int rib=0;rib<20;rib++){
+            float a=rib*Mathf.PI/10;
+            Vector3 Rim(float t){
+                float r=16.86f*Mathf.Cos(t);
+                return new Vector3(r*Mathf.Cos(a),eave+8.34f+15.56f*Mathf.Sin(t),24+r*Mathf.Sin(a));
+            }
+            for(int j=0;j<10;j++)Beam(Rim(j*Mathf.PI/20),Rim((j+1)*Mathf.PI/20),.135f,brass);
+            var basis=frame;frame*=Matrix4x4.TRS(new(0,eave+1.35f,24),Quaternion.Euler(0,rib*18,0),Vector3.one);
+            Window(new(0,1.22f,-16),1.64f,3.48f,false,3);frame=basis;
+        }
+        // Two lantern towers with open belfries and fluted roofs.
+        for(int side=-1;side<=1;side+=2){
+            var foot=new Vector3(side*34,0,28);
+            float shaft=side<0?52:58;
+            tint=ivory;Cylinder(foot,4.45f,shaft,trim,true,12,3.1f);
+            for(int j=1;j<=4;j++){
+                float y=j*shaft/5;
+                tint=enamel;Cylinder(foot+Vector3.up*y,4.65f-.25f*j,.75f,shutter,true,12);
+                tint=ivory;Cylinder(foot+Vector3.up*(y+.74f),4.75f-.25f*j,.42f,trim,true,12);
+            }
+            Cylinder(foot+Vector3.up*shaft,4.25f,1,trim,true,12);
+            for(int j=0;j<8;j++){
+                float a=j*Mathf.PI/4;
+                Column(foot+new Vector3(2.9f*Mathf.Cos(a),shaft+1,2.9f*Mathf.Sin(a)),7,.44f);
+            }
+            tint=enamel;Dome(foot+Vector3.up*(shaft+8),4.5f,6.5f,shutter,true,20);
+            tint=Palette.Brass;Cylinder(foot+Vector3.up*(shaft+14.3f),.53f,5,brass,true,10,.025f);
+        }
+        // Patterned aisle and a raised apse with the king's high-backed chair.
+        tint=P("9F4F43");Box(new(0,hall+.027f,18),new(5.7f,.05f,29),shutter);
+        tint=Palette.Brass;
+        foreach(float x in new[]{-2.66f,2.66f})Box(new(x,hall+.06f,18),new(.14f,.02f,29),brass);
+        tint=ivory;Flight(12,31,35,hall,hall+1.65f);
+        Box(new(0,hall+.825f,39),new(22,1.65f,8),trim,true);
+        var seat=new Vector3(0,hall+1.65f,40.5f);
+        tint=Palette.Brass;Box(seat+new Vector3(0,1.52f,.45f),new(1.8f,3.04f,.25f),brass,true);
+        tint=enamel;Box(seat+new Vector3(0,1.58f,.26f),new(1.48f,2.61f,.17f),shutter,true);
+        Box(seat+Vector3.up*.46f,new(1.76f,.92f,1.23f),shutter,true);
+        foreach(float x in new[]{-.9f,.9f}){
+            tint=Palette.Brass;Box(seat+new Vector3(x,.72f,0),new(.21f,1.44f,1.26f),brass,true);
+        }
+        foreach(float x in new[]{-.94f,.94f}){
+            tint=ivory;Column(seat+new Vector3(x,0,.43f),3.23f,.12f);
+            tint=Palette.Brass;Lathe(seat+new Vector3(x,3.18f,.43f),new[]{new Vector2(.18f,0),new Vector2(.23f,.15f),new Vector2(.035f,.48f)},10,brass);
+            tint=P("975D4D");Box(seat+new Vector3(x*.92f,1.44f,-.10f),new(.26f,.17f,1.14f),shutter);
+        }
+        tint=Palette.Brass;Torus(seat+new Vector3(0,2.44f,.14f),.31f,.065f,brass,20);
+        tint=P("9C5347");Box(seat+new Vector3(0,.96f,-.04f),new(1.54f,.13f,1.13f),shutter);
+        tint=P("315D73");Box(new(0,19.4f,44.2f),new(12,16,.12f),shutter);
+        tint=Palette.Brass;Torus(new(0,21,44.06f),2.7f,.22f,brass,32);
+        for(int j=0;j<12;j++){
+            var d=new Vector3(Mathf.Cos(j*Mathf.PI/6),Mathf.Sin(j*Mathf.PI/6),0);
+            Beam(new Vector3(0,21,44.01f)+d*3.1f,new Vector3(0,21,44.01f)+d*4.5f,.19f,brass);
+        }
+        Spot(frame.MultiplyPoint3x4(new Vector3(0,eave+1.4f,2.9f)),"Dome terrace of the Palace of Winds",true);
+        foreach(int sign in new[]{-1,1})Anchor(frame.MultiplyPoint3x4(new Vector3(sign*34,38,23)));
+        RoyalGardens();
+        frame=Matrix4x4.Translate(frame.MultiplyPoint3x4(new Vector3(0,0,-53)));
+        RoyalOverlook();
+        frame=previous;tint=Color.white;
+    }
+
+    static void RoyalGardens()
+    {
+        var previousRng=rng;var previousDeco=deco;
+        rng=new System.Random(14768);deco=new System.Random(42957);
+        const float floor=.16f;
+        // The two side walks meet the cross-aisle behind the palace towers.
+        void Terrace(float x,float z,float width,float depth){
+            tint=P("EDDABB");Box(new(x,floor-8,z),new(width,16,depth),paving,true);
+        }
+        void Seat(float x,float z){
+            tint=P("DDC9A3");
+            foreach(int sign in new[]{-1,1})Box(new(x+sign*1.12f,.42f,z),new(.36f,.52f,.64f),trim,true);
+            Box(new(x,.77f,z),new(3.4f,.26f,.86f),trim,true);
+        }
+        void Citrus(float x,float z){
+            var p=new Vector3(x,.68f,z);
+            tint=P("846548");Limb(p,p+Vector3.up*2.65f,.25f,.17f,wood,8);
+            for(int j=0;j<4;j++){
+                float a=j*Mathf.PI*.5f+.43f;
+                var d=new Vector3(Mathf.Cos(a),0,Mathf.Sin(a));
+                var crown=p+d*1.15f+Vector3.up*(3.15f+.33f*(j%2));
+                tint=P("846548");Limb(p+Vector3.up*1.65f,crown,.14f,.08f,wood,7);
+                tint=j%2==0?P("5D804F"):P("79935A");
+                Ellipsoid(crown,new(1.75f,1.54f,1.65f),leaf,9,6,.1f);
+                tint=P("E8A345");
+                for(int k=0;k<3;k++){
+                    float b=a+(k-1)*.72f;
+                    Ellipsoid(crown+new Vector3(1.43f*Mathf.Cos(b),-.56f+.23f*(k%2),1.37f*Mathf.Sin(b)),Vector3.one*.18f,blossom,7,4);
+                }
+            }
+        }
+        foreach(int side in new[]{-1,1}){
+            // Set the south parapet back from the hillside switchback below.
+            float width=side<0?6f:9.5f;
+            Terrace(side*(39.5f+width*.5f),17,width,64);
+            float border=side*(39.5f+width-1.52f);
+            for(int j=0;j<5;j++){
+                float z=-8+j*11.4f;
+                tint=P("B98E6D");Cylinder(new(border,floor,z),1.31f,.45f,clay,true,12,1.45f);
+                Cypress(new(border,.61f,z),6.2f+j%3*.65f);
+            }
+            for(int j=0;j<2;j++) Seat(border,9+j*24);
+        }
+        Terrace(0,67,98,36);
+        // Carry the hanging terrace down to rock where the summit falls away to the sea.
+        float Bed(float x,float z){
+            var p=frame.MultiplyPoint3x4(new Vector3(x,0,z));
+            return Ground(-1,p)-p.y-.7f;
+        }
+        const float soffit=floor-16,spring=soffit-5;
+        foreach(float z in new[]{52f,67f,83f}){
+            for(int i=0;i<=9;i++){
+                float x=-45+i*10,low=Bed(x,z);
+                if(low<spring){
+                    tint=P("CDBA9A");Box(new(x,(low+spring)*.5f,z),new(3.2f,spring-low,3.2f),trim,true);
+                    tint=P("C2A781");Box(new(x,spring-.32f,z),new(3.8f,.64f,3.85f),trim,true);
+                    for(float y=spring-24;y>low+3;y-=24)
+                        Box(new(x,y,z),new(3.65f,.65f,3.65f),trim,true);
+                }
+                if(i==9 || Mathf.Min(low,Bed(x+5,z),Bed(x+10,z))>=soffit)continue;
+                tint=P("DDCBA8");Arch(new(x+5,spring,z),4.74f,4.52f,.68f,3.05f,trim,true,16);
+            }
+        }
+        foreach(int side in new[]{-1,1})foreach(float x in new[]{13f,31.5f}){
+            var bed=new Vector3(side*x,0,69);
+            tint=P("CCAD83");Box(bed+Vector3.up*.41f,new(13.4f,.5f,13.8f),trim,true);
+            tint=P("798056");Box(bed+Vector3.up*.69f,new(12.8f,.12f,13.2f),leaf);
+            for(int j=0;j<2;j++) Citrus(bed.x,65.7f+j*6.5f);
+            foreach(int edge in new[]{-1,1}){
+                for(int j=0;j<10;j++){
+                    var root=bed+new Vector3(edge*5.56f,.93f,-5.6f+j*1.24f);
+                    tint=P("728557");Ellipsoid(root,new(.68f,.42f,.78f),leaf,7,4,.07f);
+                    tint=x<20?P("AF8AC4"):P("D78A94");
+                    for(int k=0;k<3;k++)Ellipsoid(root+new Vector3((k-1)*.3f,.47f+.09f*(k%2),.17f*(k%2)),new(.13f,.24f,.13f),blossom,5,4);
+                }
+            }
+        }
+        foreach(float z in new[]{65f,73f}){
+            tint=P("D5BE95");Cylinder(new(0,floor,z),2.55f,.47f,trim,true,28);
+            tint=P("53ADB0");Cylinder(new(0,.63f,z),2.25f,.09f,shutter,false,28);
+            tint=P("CFB07E");Cylinder(new(0,.72f,z),.39f,1.19f,trim,false,12,.24f);
+            Lathe(new(0,1.88f,z),new[]{new Vector2(.25f,0),new Vector2(1.11f,.38f),new Vector2(1.06f,.48f),new Vector2(.16f,.22f)},20,trim);
+            tint=Palette.Brass;Ellipsoid(new(0,2.25f,z),Vector3.one*.21f,brass,10,6);
+        }
+        foreach(int side in new[]{-1,1}){
+            Seat(side*19,56);Seat(side*19,79);
+            for(int j=0;j<4;j++){
+                float x=side*(7+j*5.1f);
+                foreach(float z in new[]{78,83})Column(new(x,floor,z),3.55f,.23f);
+                tint=P("87694B");Beam(new(x,3.91f,77.65f),new(x,3.91f,83.35f),.25f,wood);
+                if(j<3){
+                    foreach(float z in new[]{78,83})Beam(new(x,3.75f,z),new(x+side*5.1f,3.75f,z),.24f,wood);
+                    Bougainvillea(new(x+side*2.4f,4.12f,82.85f),Vector3.back,1.7f);
+                }
+            }
+        }
+        tint=P("E8D5AD");Box(new(0,.76f,84.76f),new(98,1.2f,.48f),trim,true);
+        rng=previousRng;deco=previousDeco;
+    }
+
+    static void RoyalOverlook()
+    {
+        const float z=0, top=.16f;
+        tint=P("EBD9B7");
+        const float radius=5.2f, halfWidth=3.5f, center=60.5f;
+        float neck=center-Mathf.Sqrt(radius*radius-halfWidth*halfWidth);
+        float angle=Mathf.Acos((neck-center)/radius);
+        Box(new(neck*.5f,top-.68f,z),new(neck,1.36f,7),paving,true);
+        var pivot=new Vector3(neck,top,0);var down=Vector3.down*1.36f;
+        Vector3 Edge(int i){
+            if(i==0 || i==32)return pivot+Vector3.forward*(i==0?-halfWidth:halfWidth);
+            float a=Mathf.Lerp(-angle,angle,i/32f);
+            return new(center+radius*Mathf.Cos(a),top,radius*Mathf.Sin(a));
+        }
+        for(int i=0;i<32;i++){
+            var a=Edge(i);var b=Edge(i+1);
+            Tri(pivot,b,a,paving,true);Tri(pivot+down,a+down,b+down,trim,true);
+            QuadN(a,b,b+down,a+down,(a+b)*.5f-new Vector3(center,top,0),trim);
+        }
+        // Spring lines step down the cliff; the openings grow taller toward the gorge.
+        for(int j=0;j<3;j++){
+            float x=j*19, spring=-11-4*j;
+            if(j<2)Arch(new(x+9.5f,spring,z),9.05f,-spring-1.9f,.95f,6.4f,trim,true,24);
+            float foot=-66;
+            if(j==2){
+                var hillside=city.Find("Western terraces and escarpment");
+                var terrain=hillside.GetComponentsInChildren<MeshCollider>().First(c=>c.name.StartsWith("Cliff rock") && c.name.Contains("smooth"));
+                for(int dx=-1;dx<=1;dx++)for(int dz=-2;dz<=2;dz++){
+                    var point=frame.MultiplyPoint3x4(new(x+dx*1.1f,top,z+dz*1.7f));
+                    float ground=terrain.Raycast(new Ray(point,Vector3.down),out var hit,240) ? hit.point.y : Level(-1,3,point.z);
+                    foot=Mathf.Min(foot,ground-point.y+top-1);
+                }
+            }
+            Box(new(x,(spring+foot)*.5f,z),new(2.2f,spring-foot,6.8f),trim,true);
+            tint=P("CCAA7F");Box(new(x,spring-.36f,z),new(2.85f,.74f,7.18f),trim,true);tint=P("EBD9B7");
+        }
+        // The last pier carries a rising stone haunch under the projecting lookout.
+        Vector3 Haunch(float t) => new(38+21.5f*(1-Mathf.Cos(t)), -19+17.8f*Mathf.Sin(t), -3.2f);
+        for(int j=0;j<18;j++){
+            var a=Haunch(j*Mathf.PI/36);var b=Haunch((j+1)*Mathf.PI/36);
+            var u=new Vector3(a.x,-1.2f,a.z);var v=new Vector3(b.x,-1.2f,b.z);var width=Vector3.forward*6.4f;
+            QuadN(a,b,v,u,Vector3.back,trim);QuadN(a+width,u+width,v+width,b+width,Vector3.forward,trim);
+            QuadN(a,a+width,b+width,b,Vector3.down,trim);
+        }
+        foreach(int side in new[]{-1,1}){
+            Box(new(29,.56f,z+side*3.32f),new(59,.8f,.42f),trim,true);
+            tint=Palette.Brass;Beam(new(0,1.03f,z+side*3.32f),new(58,1.03f,z+side*3.32f),.12f,brass,true);
+            tint=P("EBD9B7");
+        }
+        for(int j=0;j<18;j++){
+            float a=(-131+j*262f/18)*Mathf.Deg2Rad,b=(-131+(j+1)*262f/18)*Mathf.Deg2Rad;
+            Vector3 Rim(float t)=>new(60.5f+4.94f*Mathf.Cos(t),top,z+4.94f*Mathf.Sin(t));
+            var p=Rim(a);var q=Rim(b);Beam(p+Vector3.up*.84f,q+Vector3.up*.84f,.18f,trim,true);
+            Beam(p,p+Vector3.up*.87f,.17f,trim,true);
+        }
     }
     // Semicircular theatre facing the gorge, with a two-storey stage front.
     static void Theatre(Vector3 c)
@@ -2719,7 +3036,8 @@ public static class BuildQuarter
             if(j==0||j==sectors-1)
             {
                 float angle=j==0?a:b;
-                QuadN(V(r0,angle,-2),V(r1,angle,-2),V(r1,angle,y),V(r0,angle,y),Vector3.back,trim);
+                float end=i==rows-1?r1+2.2f:r1;
+                QuadN(V(r0,angle,-2),V(end,angle,-2),V(end,angle,y),V(r0,angle,y),Vector3.back,trim);
             }
             if(i==rows-1)
             {
@@ -2890,6 +3208,21 @@ public static class BuildQuarter
             var p = UP(E, u, z);
             if (Chance(.5f)) OliveTree(p, D(.8f, 1.15f)); else if (Chance(.6f)) Cypress(p - Vector3.up * .3f, D(5, 9)); else Haystack(p);
         }
+        // Long working plots beyond the former shoreline, divided by two farm lanes.
+        for(int row=0; row<8; row++){
+            float z=-46+row*53;
+            for(int strip=0;strip<2;strip++){
+                float u=148+strip*45;
+                int[] crops={0,2,1,3,5,0,4,1};
+                if(FarmFootprint(u,z,39,44)) Field(E,u,z,39,44,crops[(row+strip*3)%crops.Length]);
+            }
+        }
+        for(int i=0;i<16;i++){
+            float z=-45+i*26.5f;
+            Road(E,UP(E,189,z),UP(E,189,z+26.5f),2.8f,false,dirt);
+            if(i%2==1) Haystack(UP(E,185,z+21));
+        }
+        Road(E,mill2,UP(E,189,250),3,false,dirt);
         Spot(OnGround(E, hamlet) + new Vector3(0, 16.5f, 0), "Chapel belfry", false);
     }
     static bool FarmFootprint(float u,float z,float w,float d)
@@ -3183,7 +3516,7 @@ public static class BuildQuarter
             At(Edge(side,tier+1,TerrainStart)-side*.08f,Level(side,tier,TerrainStart)-.03f);
         }
         foreach(var p in CliffProfile(side,TerrainStart,30).Take(31))At(p.x,p.y);
-        for(float u=3;u<=UMax;u+=3){var p=UP(side,u,TerrainStart);At(p.x,p.y);}
+        for(float u=3;u<=UplandWidth(side);u+=3){var p=UP(side,u,TerrainStart);At(p.x,p.y);}
         return section;
     }
     static Vector3 Shore(int side,float d,float h,float t)
@@ -3198,14 +3531,14 @@ public static class BuildQuarter
         float ridge=d<0?h:Mathf.Lerp(h,slope,Edge01(0,.23f,t));
         float top=Mathf.Lerp(ridge,low,blend);
         top=Mathf.Lerp(top,-5.8f,Edge01(.80f,1,t));
-        float outer=Crest(side,TerrainStart).x*side-Edge(side,0,TerrainStart)*side+UMax;
+        float outer=Crest(side,TerrainStart).x*side-Edge(side,0,TerrainStart)*side+UplandWidth(side);
         top=Mathf.Lerp(top,-9,blend*Edge01(outer-17,outer,d));
         float shoulder=Edge01(0,.09f,t)*(1-Edge01(.12f,.26f,t))*Mathf.Clamp(h-4,0,85)*.19f;
         float x=Edge(side,0,TerrainStart)+side*(d+shoulder+blend*(9*Mathf.Sin(t*6+side)+6*t)+Mathf.Sin(d*.07f)*t*2.5f);
         return new Vector3(x,top,TerrainStart-t*reach);
     }
     static Vector3 StrandPoint(int side,float d,float t)=>Shore(side,d,Level(side,0,TerrainStart)-.03f,t);
-    static readonly Vector3 KeyCenter=new(-42,0,-277);
+    static readonly Vector3 KeyCenter=new(-88,0,726);
     static float KeyRim(float angle)=>1+.09f*Mathf.Cos(3*angle+.45f)+.064f*Mathf.Sin(5*angle-.7f)+.09f*Mathf.Max(0,Mathf.Sin(angle));
     static Vector3 IslandGround(float x,float z)
     {
@@ -3271,6 +3604,14 @@ public static class BuildQuarter
         }
         samples.Add(section[section.Count-1]);return samples;
     }
+    static void SouthernSeabed()
+    {
+        tint=P("CDB591");
+        for(int x=-700;x<700;x+=100)for(int z=-220;z>-1220-WildlandsShift;z-=50){
+            float south=Mathf.Max(z-50,-1220-WildlandsShift);
+            QuadN(new(x,-9.1f,south),new(x+100,-9.1f,south),new(x+100,-9.1f,z),new(x,-9.1f,z),Vector3.up,bedMat);
+        }
+    }
     static void SouthernReach()
     {
         foreach(int side in new[]{-1,1}){
@@ -3322,10 +3663,15 @@ public static class BuildQuarter
                 if(i%3==0)Box(a+Vector3.up*.34f,new(.44f,.66f,.44f),trim,true);
             }
         }
-        // Extend the sea bed past the chart island so diving remains continuous offshore.
-        tint=P("CDB591");
-        for(int x=-450;x<450;x+=75)for(int z=-420;z<-220;z+=50)
-            QuadN(new(x,-9.1f,z),new(x+75,-9.1f,z),new(x+75,-9.1f,z+50),new(x,-9.1f,z+50),Vector3.up,bedMat);
+        // Meet the original sea at z = -450.
+        tint=Color.white;
+        QuadN(new(-700,-.01f,-1250),new(-700,-.01f,-450),new(700,-.01f,-450),new(700,-.01f,-1250),Vector3.up,water,false);
+        void Ocean(float x0,float x1,float z0,float z1){
+            QuadN(new(x0,-.01f,z0),new(x0,-.01f,z1),new(x1,-.01f,z1),new(x1,-.01f,z0),Vector3.up,water,false);
+        }
+        Ocean(-2700,-700,-2700,2400);Ocean(700,2700,-2700,2400);
+        Ocean(-700,700,-2700,-1250);Ocean(-700,700,950,2400);
+        SouthernSeabed();
         for(int i=0;i<96;i++)for(int j=0;j<48;j++){
             float a=i*Mathf.PI/48,b=(i+1)*Mathf.PI/48,r=j*.025f,u=(j+1)*.025f;
             var p=KeyPoint(a,r);var next=KeyPoint(b,u);
@@ -3368,10 +3714,15 @@ public static class BuildQuarter
         var oldMarker=group.Find("Signal lookout");if(oldMarker)Object.DestroyImmediate(oldMarker.gameObject);
         var marker=new GameObject("Signal lookout").transform;marker.SetParent(group,false);marker.position=lookout+new Vector3(-.76f,.23f,0);
         var beacon=lookout+new Vector3(1.75f,.23f,-.5f);
-        tint=P("E5D4B5");Cylinder(beacon,1.12f,2.6f,trim,true,12,.85f);tint=P("317678");Cylinder(beacon+Vector3.up*2.6f,.87f,1,shutter,true,12,.85f);
-        tint=Palette.Brass;Cylinder(beacon+Vector3.up*3.6f,1,.2f,brass,false,12);
-        tint=P("FFF1B3");Ellipsoid(beacon+Vector3.up*4.15f,new(.45f,.58f,.45f),glow);
-        tint=Palette.Brass;Cylinder(beacon+Vector3.up*4.62f,.67f,.62f,brass,false,12,.03f);
+        beacon+=new Vector3(1.7f,-.65f,.1f);
+        tint=P("E9DABD");Cylinder(beacon,1.85f,9.5f,trim,true,16,1.24f);
+        for(int j=0;j<3;j++){tint=P("438586");Cylinder(beacon+Vector3.up*(2+j*2.5f),1.75f-j*.16f,.61f,shutter,true,16,1.71f-j*.16f);}
+        tint=Palette.Limestone;Cylinder(beacon+Vector3.up*9.45f,1.86f,.41f,trim,true,20);
+        for(int j=0;j<8;j++){float a=j*Mathf.PI/4;var post=beacon+new Vector3(Mathf.Cos(a)*1.22f,9.8f,Mathf.Sin(a)*1.22f);
+            tint=Palette.Brass;Beam(post,post+Vector3.up*2.46f,.12f,brass);}
+        tint=P("FFE9A3");Ellipsoid(beacon+Vector3.up*10.96f,new(.7f,.96f,.70f),glow);
+        tint=Palette.Terracotta;Dome(beacon+Vector3.up*12.2f,1.67f,1.67f,roof,true,16);
+        tint=Palette.Brass;Cylinder(beacon+Vector3.up*13.76f,.13f,1.1f,brass,false,8,.018f);
         for(int i=0;i<3;i++) {
             var pan=salt+new Vector3(3.5f+i*3.2f,-.12f,-8.9f);
             tint=P("D5B58A"); Box(pan-Vector3.up*.75f,new(2.8f,2f,4.6f),trim,true);
@@ -3519,6 +3870,99 @@ public static class BuildQuarter
         Lighthouse(new Vector3(-22, 0, 586));
         Spot(new Vector3(QuayEdge(-1, 440) - 4, QuayY(-1) + .1f, 440), "Harbour quay", false);
     }
+    static void CanalMarket()
+    {
+        float y=QuayY(1);
+        // The east wharf opens into six blocks. Both east-west cuts empty into the ship basin.
+        var columns=new[]{(102f,150f),(161f,219f),(229f,277f)};
+        var rows=new[]{(480f,504f),(515f,542f),(552f,560f)};
+        foreach(var (x0,x1) in columns)foreach(var (z0,z1) in rows){
+            var size=new Vector3(x1-x0,y+8,z1-z0);
+            tint=P("D4B58C");Box(new((x0+x1)*.5f,(y-8)*.5f,(z0+z1)*.5f),size,trim,true);
+            tint=P("E9D7B8");Box(new((x0+x1)*.5f,y+.045f,(z0+z1)*.5f),new(size.x,.09f,size.z),paving,true);
+            for(float x=x0+3;x<x1-2;x+=9){
+                tint=P("856B51");Cylinder(new(x,y+.09f,z1-.83f),.23f,.53f,wood,true,8,.29f);
+            }
+        }
+        void Footbridge(float x,float z,float heading,float length,float width){
+            var basis=frame;frame=Matrix4x4.TRS(new(x,y+.09f,z),Quaternion.Euler(0,heading,0),Vector3.one);
+            float r=length*.5f, rise=1.05f;
+            Vector3 Deck(float t,float across)=>new((2*t-1)*r,4*rise*t*(1-t),across);
+            for(int i=0;i<16;i++){
+                float a=i/16f,b=(i+1)/16f;
+                var p=Deck(a,-width/2);var q=Deck(b,-width/2);var v=Deck(a,width/2);var w=Deck(b,width/2);
+                tint=P("ECD9B7");QuadN(p,v,w,q,Vector3.up,paving);
+                foreach(float edge in new[]{-width/2,width/2}){
+                    var l=Deck(a,edge);var h=Deck(b,edge);
+                    QuadN(l,h,h+Vector3.down*.57f,l+Vector3.down*.57f,Vector3.forward*edge,trim);
+                    tint=Palette.Brass;Beam(l+Vector3.up*.88f,h+Vector3.up*.88f,.12f,brass,true);
+                    if(i%3==0) Beam(l,l+Vector3.up*.9f,.15f,wood,true);
+                }
+            }
+            tint=P("D1AF87");Arch(new(0,-2.25f,0),r-.6f,2.7f,.55f,width-.3f,trim,true);
+            frame=basis;tint=Color.white;
+        }
+        foreach(float x in new[]{123f,194f,252f}){
+            Footbridge(x,509.5f,90,11.2f,4);Footbridge(x,547,90,10.2f,3.7f);
+        }
+        foreach(float z in new[]{490f,528f,556f}){
+            Footbridge(155.5f,z,0,11.2f,3.8f);Footbridge(224,z,0,10.2f,3.8f);
+        }
+        var frontages=new (float x,float z,float yaw,float w,float d,float h,Look look)[]{
+            (112,493,0,13,8,10,Look.Merchant),(139,493,0,14,8,15,Look.Venetian),
+            (113,520,0,12,12,17,Look.Venetian),(139,520,0,15,12,10,Look.Tuscan),
+            (167,494,0,9,8,9,Look.Island),(183,494,0,13,8,13,Look.Merchant),
+            (207,494,0,16,8,18,Look.Venetian),(235,519,0,9,16,14,Look.Island),
+            (266,520,0,13,14,12,Look.Tuscan)};
+        foreach(var f in frontages)Building(new(f.x,y-.12f,f.z),f.yaw,f.w,f.d,f.h,50,0,true,true,false,f.look,true);
+        Warehouse(new(242,y+.09f,492),0,20,9,8.6f);
+        Warehouse(new(266,y+.09f,492),0,16,10,10.5f);
+        foreach(float x in new[]{238f,261f})CrateStack(new(x,y+.09f,485));
+        // The paving compass marks the auction floor. Stalls leave both crossing axes clear.
+        var plaza=new Vector3(191,y+.09f,528);
+        tint=P("C2A884");Cylinder(plaza,7.5f,.045f,trim,false,32);
+        tint=P("386E77");Cylinder(plaza+Vector3.up*.046f,6.85f,.024f,shutter,false,32);
+        for(int i=0;i<8;i++){
+            float a=i*Mathf.PI/4;
+            var dir=new Vector3(Mathf.Cos(a),0,Mathf.Sin(a));var perp=Vector3.Cross(Vector3.up,dir);
+            var p=plaza+Vector3.up*.079f;
+            tint=i%2==0?Palette.Brass:Palette.Limestone;
+            Tri(p-perp*.65f,p+dir*(i%2==0?6.35f:4.25f),p+perp*.65f,shutter);
+            Tri(p+perp*.65f,p+dir*(i%2==0?6.35f:4.25f),p-perp*.65f,shutter);
+        }
+        foreach(float x in new[]{169f,178f,202f,212f})foreach(float z in new[]{518.8f,538.8f})
+            Market(new(x,y+.09f,z),z<530?180:0,4.7f);
+        foreach(float x in new[]{108f,143f,165f,214f,234f,271f}){
+            Lamp(new(x,y+.09f,554.2f)); if(x>160)Parasol(new(x+1.5f,y+.09f,557.8f));
+        }
+        foreach(var (x0,x1) in new[]{(-247f,-184f),(-175f,-118f)})foreach(var (z0,z1) in new[]{(480f,515f),(526f,560f)}){
+            float westY=QuayY(-1);
+            tint=P("CFB08C");Box(new((x0+x1)/2,(westY-8)/2,(z0+z1)/2),new(x1-x0,westY+8,z1-z0),trim,true);
+            tint=P("E1CCAA");Box(new((x0+x1)/2,westY+.045f,(z0+z1)/2),new(x1-x0,.09f,z1-z0),paving,true);
+        }
+        float eastY=y;y=QuayY(-1);
+        foreach(float x in new[]{-225f,-147f})Footbridge(x,520.5f,90,11.2f,4.4f);
+        foreach(float z in new[]{492f,544f})Footbridge(-179.5f,z,0,9.2f,4.2f);
+        var fishHouses=new (float x,float z,float yaw,float w,float d,float h,Look style)[]{
+            (-129,490,0,12,11,15,Look.Venetian),(-145,503,180,12,10,10,Look.Merchant),
+            (-165,490,0,12,12,13,Look.Island),(-231,539,0,15,12,15,Look.Tuscan),
+            (-207,539,0,14,10,11,Look.Merchant),(-193,538,0,9,13,17,Look.Venetian),
+            (-126,537,0,11,14,13,Look.Island)};
+        foreach(var f in fishHouses)Building(new(f.x,y-.12f,f.z),f.yaw,f.w,f.d,f.h,50,0,true,true,false,f.style,true);
+        Warehouse(new(-229,y+.09f,491),0,24,16,8);Warehouse(new(-200,y+.09f,491),0,19,15,11);
+        foreach(float x in new[]{-167f,-156f,-145f})Market(new(x,y+.09f,537),180,5);
+        tint=Color.white;
+        foreach(float x in new[]{-165f,-141f}){
+            Lamp(new(x,y+.09f,551));CrateStack(new(x,y+.09f,556));Parasol(new(x+5,y+.09f,553));
+        }
+        y=eastY;
+        MarketWaterGates();
+        // Swimmers can climb the flights at the basin and at the inner market canal.
+        Stairs(new(97,-1.05f,532),new(102.4f,y+.11f,532),3.2f);
+        Stairs(new(180,-1.05f,513.85f),new(189,y+.11f,513.85f),2.6f);
+        tint=Color.white;
+    }
+
     static void HarbourTown(int side, float y)
     {
         float yaw = side < 0 ? -90 : 90;
@@ -3643,19 +4087,58 @@ public static class BuildQuarter
         }
         tint = Color.white;
     }
-    static void Breakwater(int side)
+    static bool SluiceBay(int i)=>i>=5 && i<10 || i>=16 && i<21;
+    static Vector3[] BreakwaterPath(int side)
     {
         var p0 = new Vector3(QuayEdge(side, PortZ1) + side * 10, 0, PortZ1 - 2); var p1 = new Vector3(side * 100, 0, 572); var p2 = new Vector3(side < 0 ? -22 : 32, 0, 584);
         Vector3 B(float t) => (1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
         var path = new Vector3[41]; for (int i = 0; i <= 40; i++) path[i] = B(i / 40f);
+        return path;
+    }
+    static void MarketWaterGates()
+    {
+        var path=BreakwaterPath(1);
+        foreach(int i in new[]{5,16}){
+            var a=path[i];var b=path[i+5];var direction=(b-a).normalized;
+            var previous=frame;frame=Matrix4x4.TRS((a+b)/2,Quaternion.LookRotation(Vector3.Cross(direction,Vector3.up)),Vector3.one);
+            float r=Vector3.Distance(a,b)*.5f;
+            tint=P("D6BD9A");Arch(new(0,-1.32f,0),r-.32f,4.0f,.55f,9.1f,trim,true,24);
+            frame=previous;
+        }
+    }
+    static void OpenMarketSluices()
+    {
+        var path=BreakwaterPath(1);
+        foreach(var f in city.Find("Harbour").GetComponentsInChildren<MeshFilter>()){
+            var mesh=f.sharedMesh;var v=mesh.vertices;var indices=mesh.triangles;var keep=new List<int>(indices.Length);
+            for(int j=0;j<indices.Length;j+=3){
+                var a=v[indices[j]];var b=v[indices[j+1]];var c=v[indices[j+2]];var mid=(a+b+c)/3;
+                bool cut=false;
+                if(mid.x>52 && mid.z>495 && mid.z<562 && (f.sharedMesh.name.Contains("Cliff rock") || Mathf.Min(a.y,b.y,c.y)<3.19f)){
+                    foreach(int i in new[]{5,16}){
+                        var axis=path[i+5]-path[i];var d=mid-path[i];d.y=0;
+                        float along=Vector3.Dot(d,axis)/axis.sqrMagnitude;
+                        if(along>.001f && along<.999f && (d-axis*along).sqrMagnitude<324)cut=true;
+                    }
+                }
+                if(!cut){keep.Add(indices[j]);keep.Add(indices[j+1]);keep.Add(indices[j+2]);}
+            }
+            if(keep.Count==indices.Length)continue;
+            mesh.SetTriangles(keep,0);EditorUtility.SetDirty(mesh);
+            foreach(var col in f.GetComponentsInChildren<MeshCollider>()){col.sharedMesh=null;col.sharedMesh=mesh;}
+        }
+    }
+    static void Breakwater(int side)
+    {
+        var path=BreakwaterPath(side);var p2=path[40];
         for (int i = 0; i < 40; i++)
         {
             var a = path[i];
             tint = Color.Lerp(P("E2CFAA"), P("D2BC94"), Mathf.PerlinNoise(i * .3f, side));
-            Sweep(path, i, -4.5f, 4.5f, -9.2f, 3.2f, trim);
+            if(side<0 || !SluiceBay(i))Sweep(path, i, -4.5f, 4.5f, -9.2f, 3.2f, trim);
             tint = P("E9D7B5"); Sweep(path, i, -3.8f, 3.8f, 3.2f, 3.5f, paving);
             tint = Color.white; Sweep(path, i, -side * 4.2f - .4f, -side * 4.2f + .4f, 3.35f, 4.65f, trim);
-            if (i % 2 == 0) Rock(a + new Vector3(side * D(5, 7), -6, 0), new Vector3(D(1.6f, 2.8f), D(6, 8), D(1.6f, 2.8f)), 7);
+            if (i % 2 == 0 && (side<0 || !SluiceBay(i))) Rock(a + new Vector3(side * D(5, 7), -6, 0), new Vector3(D(1.6f, 2.8f), D(6, 8), D(1.6f, 2.8f)), 7);
             if (i % 8 == 4) Lamp(a + Vector3.up * 3.5f + Vector3.right * side * 2.5f);
         }
         if (side > 0) { tint = P("F3E8D2"); Cylinder(p2, 3.4f, 9, trim, true, 16, 2.8f); tint = P("B66547"); Lathe(p2 + Vector3.up * 9, new[] { new Vector2(3.1f, 0), new Vector2(.1f, 3) }, 16, roof, true); tint = Color.white; }

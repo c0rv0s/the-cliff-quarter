@@ -94,7 +94,10 @@ public static class VerifyTownStories
         var p=Player;var home=p.transform.position;var camera=Object.FindAnyObjectByType<WandererCamera>();
         var house=Object.FindObjectsByType<QuarterSwingDoor>().Single(d=>d.name.StartsWith("Tidekeeper"));
         bool swam=false,landed=false;var checks=new List<object>();
-        var route=new[]{new Vector3(-1,2.85f,-181.5f),new Vector3(-4,0,-189),new Vector3(-14,0,-209),new Vector3(-26,0,-229),new Vector3(-37,0,-246),new Vector3(-41,1.5f,-257),house.transform.TransformPoint(new Vector3(0,0,-4)),house.transform.TransformPoint(new Vector3(0,0,2.5f))};
+        var shore=house.transform;
+        var route=new[]{shore.TransformPoint(new Vector3(0,-4.5f,-50)),shore.TransformPoint(new Vector3(0,-3.6f,-37)),
+            shore.TransformPoint(new Vector3(0,-2,-27)),shore.TransformPoint(new Vector3(0,0,-15)),
+            shore.TransformPoint(new Vector3(0,0,-4)),shore.TransformPoint(new Vector3(0,0,2.5f))};
         p.Teleport(route[0]+Vector3.up*.16f);p.TestInput=true;Time.timeScale=2;
         try{
             foreach(var to in route.Skip(1)){

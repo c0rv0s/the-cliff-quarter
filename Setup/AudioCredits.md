@@ -1,18 +1,26 @@
 # Audio credits
 
-Sound effects in `TinyWorld/Assets/Resources/Audio` come from Freesound recordings found through [Openverse](https://openverse.org).
+Sound effects in `TinyWorld/Assets/Resources/Audio` come from Freesound recordings found through the [Openverse audio API](https://api.openverse.org/v1/audio/).
 Every clip was trimmed, faded, level-normalised and resampled; loops were crossfaded. The milestone sting is the sunstone glockenspiel note re-pitched into a major arpeggio, and the glider loop mixes the wind and flapping-fabric recordings.
 CC BY clips (marked **BY**) require this attribution; CC0 clips are credited as a courtesy.
 
 | Game folder | Source | Creator | Licence |
 |---|---|---|---|
 | Ambience/cicadas | [Cicada's orchestra](https://freesound.org/people/Jedo/sounds/396810) | Jedo | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Ambience/field_grass | [wind_long_grass_24_96_mono.wav](https://freesound.org/people/dhi67540/sounds/94931) | dhi67540 | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Ambience/grotto_air | [Ambiance_Atmosphere_Cave_Loop_Stereo.ogg](https://freesound.org/people/Nox_Sound/sounds/553080) | Nox_Sound | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Ambience/high_wind, GlideLoop | [a gentle breeze, wind 2](https://freesound.org/people/mario1298/sounds/181251) | mario1298 | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Ambience/market_murmur | [Carmel Market.aif](https://freesound.org/people/TOC1/sounds/217203) | TOC1 | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Ambience/river_lapping | [Water lapping gurgling under dock 05.mp3](https://freesound.org/people/TRP/sounds/574869) | TRP | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Ambience/shore_swell | [200906 Water waves lapping, lake, gentle, close, PEC 9am.flac](https://freesound.org/people/TRP/sounds/568819) | TRP | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Ambience/town_day | [20120717_little.town.day.01.wav](https://freesound.org/people/dobroide/sounds/161871) | dobroide | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) **BY** |
+| Ambience/wild_canopy | [Forest Wind 04.wav](https://freesound.org/people/FilmmakersManual/sounds/524203) | FilmmakersManual | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Bells | [Italian bells mid distant.wav](https://freesound.org/people/mikewest/sounds/411489) | mikewest | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Dash | [Swosh swoosh whoosh air sound, free, high quality](https://freesound.org/people/qubodup/sounds/60026) | qubodup | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Dash | [Whoosh / Dash (2)](https://freesound.org/people/Kastenfrosch/sounds/521996) | Kastenfrosch | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| DockCreaks | [Wood Creak Single V1](https://freesound.org/people/Rudmer_Rotteveel/sounds/502505), [V6](https://freesound.org/people/Rudmer_Rotteveel/sounds/506661) | Rudmer_Rotteveel | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Emitters/garden_pool | [small fountain](https://freesound.org/people/roman_cgr/sounds/415027) | roman_cgr | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Emitters/gull_call | [Seagull single call](https://freesound.org/people/steaq/sounds/263786) | steaq | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Emitters/harbour_gulls | [harbour, seagulls-48k.wav](https://freesound.org/people/Further_Roman/sounds/208074) | Further_Roman | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Emitters/sheep_bells | [CaboSardão_GoatBells_MestreAndré_Sonotomia.wav](https://freesound.org/people/Sonotomia/sounds/570809) | Sonotomia | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Emitters/stream | [Large brook, creek, stream, water sound.](https://freesound.org/people/SamsterBirdies/sounds/584270) | SamsterBirdies | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
@@ -60,6 +68,7 @@ CC BY clips (marked **BY**) require this attribution; CC0 clips are credited as 
 | Sunstone | [Glockenspiel - C5 (glock_medium_C5.wav)](https://freesound.org/people/sgossner/sounds/373364) | sgossner | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Sunstone, Milestone | [glockenspiel A medium soft.wav](https://freesound.org/people/frubu/sounds/161546) | frubu | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | Swim | [G54-26-Person Swimming.wav](https://freesound.org/people/craigsmith/sounds/438845) | craigsmith | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| TempleChimes | [wind chimes - single 02.wav](https://freesound.org/people/Anthousai/sounds/398493), [single 04.wav](https://freesound.org/people/Anthousai/sounds/398496) | Anthousai | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | UI | [Click - Wooden 1](https://freesound.org/people/GameAudio/sounds/220195) | GameAudio | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | UI | [Wooden Click](https://freesound.org/people/BenjaminNelan/sounds/321083) | BenjaminNelan | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | UIHover | [Wooden Hover](https://freesound.org/people/BenjaminNelan/sounds/321082) | BenjaminNelan | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |

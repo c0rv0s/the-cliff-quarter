@@ -4,7 +4,7 @@ namespace TinyWorld
 {
     public sealed class StickyHand : MonoBehaviour
     {
-        public float maxReach = 10.8f;
+        public float maxReach = 12.96f;
         public float shotSpeed = 110;
         public const float MaxHoldSeconds = 10;
         public float HoldSeconds { get; private set; }

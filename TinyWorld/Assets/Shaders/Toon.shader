@@ -34,6 +34,8 @@ Shader "TinyWorld/Toon"
         half _RampCenter, _RampSoft, _Ambient, _Variation, _Pattern, _PatternStrength, _TopAmount, _WetLine;
         half _RimStrength, _Gloss, _Translucency, _Wind;
         CBUFFER_END
+        float4 _PyramidLantern, _DungeonMin, _DungeonMax, _DungeonTorches[8];
+        int _DungeonTorchCount;
         #include "TinyWorldCommon.hlsl"
         float3 DisplaceWS(float3 positionWS, half4 color) { return _Wind > 0 ? TWWind(positionWS, color.a, _Wind) : positionWS; }
         ENDHLSL
@@ -122,6 +124,23 @@ Shader "TinyWorld/Toon"
                 }
                 if (_WetLine > 0) albedo *= lerp(1 - .28 * _WetLine, 1, saturate((p.y - .05 + TWNoise(p.xz * .8) * .25) / 1.1));
 
+                // Enclosed dungeon volumes receive local lantern and torch light.
+                if (all(p > _DungeonMin.xyz) && all(p < _DungeonMax.xyz)) {
+                    float3 toLamp = _PyramidLantern.xyz - p;
+                    float distanceToLamp = length(toLamp);
+                    half reach = 1 - smoothstep(1, max(2, _PyramidLantern.w), distanceToLamp);
+                    half diffuse = .35 + .65 * saturate(dot(n, toLamp / max(.1, distanceToLamp)));
+                    half3 light = half3(.014,.020,.032) * (.72 + .28 * n.y);
+                    light += half3(.83,1,.88) * (1.8 * reach * diffuse * step(1, _PyramidLantern.w));
+                    for(int t=0;t<min(_DungeonTorchCount,8);t++){
+                        float3 delta=_DungeonTorches[t].xyz-p;
+                        float len=length(delta);
+                        half glow=1-smoothstep(.5,14,len);
+                        half flutter=.96+.04*sin(_Time.y*4.5+t);
+                        light+=half3(1,.55,.23)*glow*(.28+.72*saturate(dot(n,delta/max(.1,len))))*flutter;
+                    }
+                    return half4(albedo * light + _EmissionColor.rgb, 1);
+                }
                 float4 shadowCoord = TransformWorldToShadowCoord(p);
                 Light light = GetMainLight(shadowCoord);
                 float ndl = dot(n, light.direction);

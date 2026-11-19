@@ -16,7 +16,7 @@ If you have a local Mac build, launch `Builds/The Cliff Quarter.app` directly.
 - Platform sides and corners are grabbable. Low pull-ups automatically crouch.
 - Walk toward hanging vines to grab them; **W / S:** climb; **W / Space:** pull over the top
 - **Ctrl:** crouch; stand on release when there is room
-- **Hold click / F:** shoot the green sticky hand at the crosshair, up to **10.8 m**; sticks to the first surface hit
+- **Hold click / F:** shoot the green sticky hand at the crosshair, up to **12.96 m**. It sticks to the first surface hit.
 - Attached: the hand reels you toward its grip; **WASD:** steer the swing
 - Release the held button to let go; grips expire after **10 seconds**. Release keeps your momentum.
 - **C / right click:** release or drop · From a hang: **S + Space:** hop away
@@ -26,6 +26,8 @@ If you have a local Mac build, launch `Builds/The Cliff Quarter.app` directly.
 - **Space in the air** (falling, 3 m+ clear below) opens the glider · **WASD:** steer · **Shift:** dive
   · **Space / C:** fold. Landing, water, ledges, swings, the sticky hand and dashes fold it too.
 - Water: **Space:** rise / leap · **Ctrl / C:** dive · **Shift:** swim faster
+- Hold **Shift + 6 + 7** together to unlock all six quest rewards for this adventure.
+- Once you have the painted skiff, press **B** or click the **right stick** to call it to the nearest open water. In the skiff, hold **Shift** while rowing forward for a faster stroke.
 - **I / D-pad Left** opens the journal. Each launch starts a fresh adventure.
 - **G** talks to people and uses nearby objects. Hold the **middle mouse button** to look closer.
 - **R** returns to your last settled landing. **Esc** pauses. **F1** opens the controls.
@@ -34,9 +36,17 @@ If you have a local Mac build, launch `Builds/The Cliff Quarter.app` directly.
 
 The climbing alley lies ahead of the starting quay. Brass lips lead to its roof
 and swing crossing. Water stairs connect the river to the quays; stair streets,
-balconies, and bridges lead toward the crown gardens. The western stairs connect the
-theatre, temple and palace across three ravines. At the harbour, the lower mouth of
-the salt grotto climbs through the headland to a sea window.
+balconies, and bridges lead toward the crown gardens. The western stairs fork toward the Temple of the Sun and the summit palace. Cross
+the royal courtyard and climb the audience stair to meet the king and his jester.
+The throne faces the courtyard gate and the arched lookout over the gorge. Past either side of the audience stair, the cypress walks lead to the royal citrus gardens. The oak side door along the north walk opens onto the palace gaol, its cell gallery and the torture chamber below.
+
+At the harbour, footbridges connect the potters’ square and fish exchange. Two
+water gates lead from the east market canals into the ship basin. The chart-house
+lighthouse stands offshore west of the entrance. Across the water from the
+southern salt store, land inside the hooked jungle bay. Follow the pale stone
+road inland to the Sun pyramid. The western branch leads to the Jaguar pyramid
+past the old courts. A carved door at the base of each pyramid leads underground. Look on the west face of the Sun pyramid and the east face of the Jaguar pyramid. Nera’s sea-glass lantern illuminates the lower chambers. On the eastern uplands, the farm tracks continue beyond the stream
+bridges to the outer vineyards, orchards and pastures.
 
 ## Edit
 
@@ -44,7 +54,7 @@ The earlier `RiverCity.unity` and `RiverCityBaseline.unity` scenes are preserved
 
 `AgentScripts/BuildQuarter.cs` rebuilds the playable quarter and its generated
 meshes. The Tiny World menu rebuilds the quarter discoveries prefab. Save scene work before running it; manual edits to that generated scene
-will be replaced. Traversal and glider tunables are on `WandererMotor`.
+will be replaced. After changing the coastline or canal layout, use **Tiny World → Bake navigable skiff water** in the playable scene. Traversal and glider tunables are on `WandererMotor`.
 `AgentScripts/VerifyGlider.cs` checks flight in Play mode after you win the courier race.
 
 The wanderer is modeled in `TinyWorld/Art/build_wanderer.py` (Blender 5.2), which

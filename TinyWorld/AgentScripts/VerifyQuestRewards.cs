@@ -16,6 +16,108 @@ public static class VerifyQuestRewards
         int frame=Time.frameCount;
         while(Time.frameCount==frame) { var shell=Object.FindAnyObjectByType<WandererShell>();if(shell.Paused)shell.SetPaused(false);await Task.Yield(); }
     }
+    public static async Task<object> Shortcut()
+    {
+        Object.FindAnyObjectByType<WandererShell>().Begin();
+        var before=Enumerable.Range(0,Book.TotalCount).Select(Book.Stage).ToArray();
+        var settings=InputSystem.settings;
+        var focus=settings.editorInputBehaviorInPlayMode;
+        var background=settings.backgroundBehavior;
+        settings.editorInputBehaviorInPlayMode=InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+        settings.backgroundBehavior=InputSettings.BackgroundBehavior.IgnoreFocus;
+        var keyboard=InputSystem.AddDevice<Keyboard>();
+        async Task Press(params Key[] held){
+            InputSystem.QueueStateEvent(keyboard,new KeyboardState(held));
+            InputSystem.Update();
+            for(int i=0;i<3;i++)await Frame();
+        }
+        try{
+            InputSystem.EnableDevice(keyboard);keyboard.MakeCurrent();
+            await Press(Key.Digit6,Key.Digit7);
+            bool digitsAloneLocked=!Book.Earned(0);
+            await Press(Key.RightShift,Key.Digit7);
+            bool partialLocked=!Book.Earned(0);
+            await Press(Key.RightShift,Key.Digit7,Key.Digit6);
+            bool rewards=Enumerable.Range(0,Book.TotalCount).All(Book.Earned);
+            bool stagesPreserved=Enumerable.Range(0,Book.TotalCount).Select(Book.Stage).SequenceEqual(before);
+            bool outfit=Book.paradeMantle.activeInHierarchy;
+            Book.ToggleOutfit();
+            await Press();await Press(Key.LeftShift,Key.Digit6,Key.Digit7);
+            bool keptOutfitChoice=!Book.paradeMantle.activeInHierarchy;
+            Book.ToggleOutfit();
+            return new{digitsAloneLocked,partialLocked,rewards,stagesPreserved,keptOutfitChoice,
+                gearVisible=outfit&&Book.lantern.activeInHierarchy&&Book.skiff.gameObject.activeInHierarchy,
+                canGlide=Book.CanGlide};
+        }finally{
+            InputSystem.RemoveDevice(keyboard);settings.backgroundBehavior=background;settings.editorInputBehaviorInPlayMode=focus;
+        }
+    }
+    public static async Task<object> CallSkiff()
+    {
+        var player=Player;var boat=Book.skiff;var shell=Object.FindAnyObjectByType<WandererShell>();shell.Begin();
+        var start=player.transform.position;var original=boat.transform.position;var bearing=boat.transform.rotation;
+        bool locked=!boat.CallToShore() && !boat.gameObject.activeSelf;
+        var settings=InputSystem.settings;var focus=settings.editorInputBehaviorInPlayMode;var background=settings.backgroundBehavior;
+        settings.editorInputBehaviorInPlayMode=InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+        settings.backgroundBehavior=InputSettings.BackgroundBehavior.IgnoreFocus;
+        var keyboard=InputSystem.AddDevice<Keyboard>();var pad=InputSystem.AddDevice<Gamepad>();
+        try{
+            InputSystem.EnableDevice(keyboard);InputSystem.EnableDevice(pad);
+            foreach(var role in new[]{"Belen","copper","pup","Belen"})Book.Speak(role);
+            player.Teleport(new Vector3(208,5,510));await Frame();
+            keyboard.MakeCurrent();
+            InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.B));
+            for(int i=0;i<4;i++)await Frame();
+            var canal=boat.transform.position;
+            InputSystem.QueueStateEvent(keyboard,new KeyboardState());
+            var sea=new Vector3(234,-.55f,-720);player.Teleport(sea);await Frame();
+            pad.MakeCurrent();InputSystem.QueueStateEvent(pad,new GamepadState().WithButton(GamepadButton.RightStick));
+            for(int i=0;i<4;i++)await Frame();
+            var called=boat.transform.position;
+            float gap=Vector2.Distance(new Vector2(called.x,called.z),new Vector2(sea.x,sea.z));
+            var target=QuarterLandmark.WithinReach(player);
+            if(target==boat)target.Use();
+            bool boarded=player.Skiff==boat;
+            bool aboardIgnored=!boat.CallToShore();
+            float jump=0;float rest=0;var previous=boat.portOar.localRotation;
+            var oars=new[]{boat.portOar,boat.starboardOar};
+            var lastTip=new Vector3[oars.Length];
+            int submerged=0,backwardPulls=0;
+            for(int i=0;i<480;i++){
+                var helm=i<240?Vector2.up:i<300?Vector2.down:Vector2.zero;
+                boat.Sail(helm,i>=100 && i<220,1f/60);
+                jump=Mathf.Max(jump,Quaternion.Angle(previous,boat.portOar.localRotation));previous=boat.portOar.localRotation;
+                for(int side=0;side<oars.Length;side++){
+                    var blade=oars[side].TransformPoint(new Vector3(side==0?-1.32f:1.32f,-.28f,0));
+                    var tip=boat.transform.InverseTransformPoint(blade);
+                    if(i>60 && i<240 && tip.y<-.025f){
+                        submerged++;
+                        if(tip.z<lastTip[side].z)backwardPulls++;
+                    }
+                    lastTip[side]=tip;
+                }
+            }
+            rest=Quaternion.Angle(previous,Quaternion.identity);
+            var shores=new List<object>();
+            foreach(var point in new[]{new Vector3(-171,168.3f,118),new Vector3(-228,50.4f,-820)}){
+                player.Teleport(point);
+                var watch=System.Diagnostics.Stopwatch.StartNew();
+                bool summoned=boat.CallToShore();watch.Stop();
+                var berth=boat.transform.position;
+                bool wet=RiverWaterVolume.At(berth-Vector3.up*.7f);
+                for(int i=0;i<70;i++)boat.Sail(Vector2.up,false,.03f);
+                shores.Add(new {summoned,wet,sailed=(boat.transform.position-berth).magnitude,callMilliseconds=watch.ElapsedMilliseconds});
+            }
+            var results=new{locked,earned=Book.Earned(5),shores,keyboardCanal=Vector3.Distance(canal,new Vector3(208,.02f,510))<12,
+                gamepadSea=gap<3.3f,boarded,aboardIgnored,frameChange=jump,rest,
+                forwardStrokePushesWaterAft=submerged>0 && submerged==backwardPulls};
+            return results;
+        }finally{
+            player.Teleport(start);boat.transform.SetPositionAndRotation(original,bearing);
+            InputSystem.RemoveDevice(keyboard);InputSystem.RemoveDevice(pad);
+            settings.editorInputBehaviorInPlayMode=focus;settings.backgroundBehavior=background;
+        }
+    }
     public static async Task<object> Restart()
     {
         var p=Player; var race=Book.race; bool locked=!Book.CanGlide;

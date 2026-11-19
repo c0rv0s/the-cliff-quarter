@@ -63,7 +63,7 @@ public static class VerifyGrappleSwing
             Check("swing cannot pass through new wall",p.transform.position.x<=origin.x-1.95f,p.transform.position.ToString());Object.DestroyImmediate(wall);
             Place(new Vector3(-4,6,0),new Vector3(0,0,28));Fire(new Vector3(0,14,0));float maxStretch=0,maxSpeed=0;
             for(int i=0;i<360;i++){Tick(1f/120);if(p.Grappling)maxStretch=Mathf.Max(maxStretch,Vector3.Distance(p.TetherOrigin,p.Hand.Point));maxSpeed=Mathf.Max(maxSpeed,p.Velocity.magnitude);}
-            Check("fast swing stays within maximum stretch",maxStretch<=10.85f,maxStretch);Check("swing speed stays bounded",maxSpeed<=40.5f,maxSpeed);
+            Check("fast swing stays within maximum stretch",maxStretch<=p.Hand.maxReach+.05f,maxStretch);Check("swing speed stays bounded",maxSpeed<=40.5f,maxSpeed);
             Place(new Vector3(-4,6,0),new Vector3(0,0,8));Fire(new Vector3(0,14,0));Tick(1,dt:1f/60);var sixty=p.transform.position;
             Place(new Vector3(-4,6,0),new Vector3(0,0,8));Fire(new Vector3(0,14,0));Tick(1);Check("60 and 120 Hz remain consistent",Vector3.Distance(sixty,p.transform.position)<.35f,Vector3.Distance(sixty,p.transform.position));
             Place(new Vector3(-4,6,0));Fire(new Vector3(0,14,0));
@@ -83,7 +83,7 @@ public static class VerifyGrappleSwing
             var body=p.GetComponent<CharacterController>();body.enabled=false;p.transform.position=origin+new Vector3(-13,6,0);body.enabled=true;
             var blocker=Box("Blocked rope correction",new Vector3(-11.5f,10,0),new Vector3(.4f,20,20));Tick(.2f);
             Check("blocked full stretch does not snap grip",p.Grappling&&p.transform.position.x<origin.x-11.9f,new{position=p.transform.position.ToString(),stretch=Vector3.Distance(p.TetherOrigin,p.Hand.Point)});Object.DestroyImmediate(blocker);
-            Place(new Vector3(0,2,-4));bool launched=p.Hand.FireAt(p.Hand.Origin+Vector3.back*30);Check("empty shot still launches",launched&&p.Hand.Flying);p.Hand.Tick(.4f);Check("empty shot retracts at 10.8 metres",!p.Grappling&&!p.Hand.Flying&&p.Hand.maxReach==10.8f);
+            Place(new Vector3(0,2,-4));bool launched=p.Hand.FireAt(p.Hand.Origin+Vector3.back*30);Check("empty shot still launches",launched&&p.Hand.Flying);p.Hand.Tick(.4f);Check("empty shot retracts at 12.96 metres",!p.Grappling&&!p.Hand.Flying&&p.Hand.maxReach==12.96f);
         }
         finally{Object.DestroyImmediate(fixtures);p.Teleport(start);p.TestInput=false;p.ControlsEnabled=true;}
         return results;

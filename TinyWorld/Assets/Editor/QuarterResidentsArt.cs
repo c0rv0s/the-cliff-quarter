@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using UnityEngine;
 
 namespace TinyWorld.EditorArt
@@ -14,7 +15,7 @@ namespace TinyWorld.EditorArt
             Resident(root,"Nera",V(81,5,452),Vector3.forward,Blue,Gold,2,
                 "Mum used to turn that ring around when she was thinking.","Glass looks like a jewel if you hold it up to the sun.");
             Resident(root,"Sami",V(-142,132,42),Vector3.right,Palette.Olive,Teal,3,
-                "Stand on the orchestra floor. Even a whisper carries.","The cut stairs climb from here to the temple.");
+                "Stand on the orchestra floor. Even a whisper carries.","The cut stairs climb from here to the royal courtyard.");
 
             Resident(root,"Lina",V(-12.44f,3.14f,11.0f),Vector3.forward,Blue,Pink,0,
                 "We set the crab pots when the water reaches the third step.");
@@ -56,8 +57,8 @@ namespace TinyWorld.EditorArt
                 "Have you seen the kite turn in the crosswind?");
             Resident(root,"Dima",V(-142.00f,132.00f,26.0f),Vector3.back,Pink,Dark,3,
                 "The stone seats stay warm long after sunset.");
-            Resident(root,"Salma",V(-201.00f,146.00f,258.0f),Vector3.forward,Gold,Teal,0,
-                "I count the palms as I walk to the palace.");
+            Resident(root,"Salma",V(-198,146,233),Vector3.forward,Gold,Teal,0,
+                "The sun glints on the temple doors each morning.");
             Resident(root,"Nico",V(-45.00f,5.00f,457.0f),Vector3.back,Blue,Pink,1,
                 "Three crews asked for rope this morning.");
             Resident(root,"Rosa",V(-77.00f,5.00f,440.0f),Vector3.forward,Red,Cream,2,
@@ -66,6 +67,23 @@ namespace TinyWorld.EditorArt
                 "The gulls always find the fish before anyone else.");
             Resident(root,"Paco",V(101.00f,5.00f,466.0f),Vector3.forward,Palette.Olive,Red,0,
                 "The captain swears the old ship sails faster.");
+            var temple=UnityEngine.Object.FindObjectsByType<QuarterSwingDoor>().Single(d=>d.name=="Temple of the Sun").transform;
+            var palace=UnityEngine.Object.FindObjectsByType<QuarterSwingDoor>().Single(d=>d.name=="Doors of the royal audience").transform;
+            var king=Resident(root,"King Aurelio",palace.TransformPoint(V(0,1.68f,36)),-palace.right,Blue,Gold,2,
+                "See the notch in the eastern tower? My daughter measures the midsummer sun there.",
+                "You came by the long stair. Take the gallery on your way down. You can see every sail.");
+            king.pace=0; king.body.rotation=Quaternion.LookRotation(-palace.forward);
+            var jester=Resident(root,"Pip the jester",palace.TransformPoint(V(-5,0,19)),palace.forward,Red,Teal,0,
+                "I asked for a raise. His Majesty pointed to the stairs.","Four bells on my hat and still I sleep through noon.");
+            CourtDress(king,true); CourtDress(jester,false);
+            Resident(root,"Herald Elia",palace.TransformPoint(V(7,0,12)),palace.forward,Teal,Gold,1,
+                "Three knocks for a ship from home. Two for a ship from abroad.");
+            Resident(root,"Royal cartographer",palace.TransformPoint(V(-9,0,4)),palace.forward,Palette.Olive,Cream,3,
+                "On the southern chart I left the trees uncounted. I ran out of green.");
+            Resident(root,"Tess",V(185,5,521),Vector3.right,Teal,Red,1,"We open the bidding when the shade reaches the compass.");
+            Resident(root,"Rafi",V(246,5,486),Vector3.right,Cream,Blue,2,"The saffron goes upstairs. Even a little canal water spoils it.");
+            Resident(root,"Inigo",V(-160,4,548),Vector3.right,Blue,Gold,3,"One hook for mullet, two for squid. The gulls take either.");
+            Resident(root,"Lea",V(-216,4,485),Vector3.left,Red,Cream,2,"I can splice a rope faster than my sister can measure it.");
             var arrivals=new[]{
                 ("Cleo",V(-12,3,4),"That brass ring course? I made the first hoop oval by sitting on it."),
                 ("Moss",V(-14,4,16),"Every bell has a different voice."),
@@ -76,10 +94,10 @@ namespace TinyWorld.EditorArt
                 ("Isa",V(-57,5,451),"Old Copper has a better spot on the dock than I do."),
                 ("Vico",V(-47,5,460),"The little one can swallow a whole sardine."),
                 ("Alba",V(51,5,452),"Three knots and this basket will hold."),
-                ("Ines",V(-171,177.7f,110),"The lowest bell is the one that carries farthest."),
-                ("Omar",V(-169,174.1f,76),"It takes two of us to polish each temple door."),
+                ("Ines",temple.TransformPoint(V(2,0,10)),"The lowest bell is the one that carries farthest."),
+                ("Omar",temple.TransformPoint(V(3,0,-7)),"It takes two of us to polish each temple door."),
                 ("Eli",V(-144,132,33),"They used to let me do the echo before the show."),
-                ("Luz",V(-203,146,249),"My shadow always gets to the palace first.")
+                ("Luz",V(-207,146,232),"My shadow always gets to the temple first.")
             };
             for(int i=0;i<arrivals.Length;i++){
                 var (name,at,words)=arrivals[i]; Resident(root,name,at,i%2==0?Vector3.forward:Vector3.back,
@@ -92,14 +110,45 @@ namespace TinyWorld.EditorArt
                     d.name=="Salt store"?"Salt is ready when the crystals stack like stairs.":d.name=="Barn field doors"?"Even the fancy tack needs oil.":"A different blue for every depth. That’s my rule.");
             }
         }
-        static void Resident(Transform root,string name,Vector3 seed,Vector3 bearing,Color coat,Color trim,int variant,params string[] lines)
+        static void CourtDress(QuarterResident who,bool king)
+        {
+            var cap=new QuarterForms(king?Gold:Teal);
+            cap.Lathe(Vector3.zero,16,(.24f,.16f),(.29f,.174f),(.39f,.16f));
+            for(int j=0;j<(king?8:3);j++){
+                float angle=j*2*Mathf.PI/(king?8:3);
+                var ray=V(Mathf.Cos(angle),0,Mathf.Sin(angle));
+                if(king){
+                    cap.ink=Gold;cap.Rod(ray*.15f+Vector3.up*.36f,ray*.155f+Vector3.up*(j%2==0?.54f:.46f),.056f,.012f,4);
+                }else{
+                    cap.ink=j==0?Red:j==1?Teal:Gold;
+                    var bend=ray*.19f+Vector3.up*.54f;
+                    var end=ray*.31f+Vector3.up*.31f;
+                    cap.Rod(ray*.09f+Vector3.up*.36f,bend,.098f,.061f);
+                    cap.Rod(bend,end,.061f,.012f);cap.ink=Gold;cap.Rod(end,end+Vector3.down*.045f,.039f,.026f);
+                }
+            }
+            Art(who.head,king?"Eight-point royal diadem":"Pip’s bell cap",cap);
+            var mantle=new QuarterForms(king?Palette.Hex("853E48"):Gold);
+            mantle.Lathe(Vector3.zero,16,(1.13f,.266f),(1.3f,.254f),(1.405f,.127f));
+            if(king){
+                mantle.Silk(V(-.21f,1.29f,-.11f),V(.22f,1.29f,-.11f),V(.29f,.26f,-.23f));
+                mantle.Silk(V(-.21f,1.29f,-.11f),V(.29f,.26f,-.23f),V(-.28f,.25f,-.26f));
+            }
+            Art(who.body,king?"Crimson coronation mantle":"Jester’s collar",mantle);
+        }
+        static QuarterResident Resident(Transform root,string name,Vector3 seed,Vector3 bearing,Color coat,Color trim,int variant,params string[] lines)
         {
             if(!Patrol(seed,bearing,out var a,out var b)) throw new InvalidOperationException("No clear street for "+name);
+            return ResidentFigure(root,name,a,b,coat,trim,variant,name!="King Aurelio" && name!="Pip the jester",lines);
+        }
+
+        static QuarterResident ResidentFigure(Transform root,string name,Vector3 a,Vector3 b,Color coat,Color trim,int variant,bool wares,params string[] lines)
+        {
             var t=Node(root,name,a);t.gameObject.layer=2;
             var walker=t.gameObject.AddComponent<CharacterController>();walker.radius=.25f;walker.height=1.64f;walker.center=Vector3.up*.82f;walker.stepOffset=.27f;walker.skinWidth=.025f;
             var n=t.gameObject.AddComponent<QuarterResident>();n.firstName=name;n.lines=lines;n.end=b;n.pace=1.05f+.11f*variant;
             n.reach=2.65f;n.handle=V(0,1.28f,0);
-            n.body=Node(t,"Figure",Vector3.zero);n.body.rotation=Quaternion.LookRotation(Vector3.ProjectOnPlane(b-a,Vector3.up));
+            n.body=Node(t,"Figure",Vector3.zero);n.body.localRotation=Quaternion.LookRotation(Vector3.ProjectOnPlane(b-a,Vector3.up));
             var skin=Palette.Hex(new[]{"AE714F","965B3F","B77955","B98767"}[variant]);
             var g=new QuarterForms(coat);
             g.Lathe(Vector3.zero,12,(.61f,.22f),(.65f,.225f),(1.01f,.177f),(1.28f,.222f),(1.37f,.18f),(1.4f,.09f));
@@ -134,7 +183,8 @@ namespace TinyWorld.EditorArt
                 g.ink=Wood;g.Lathe(V(0,-.70f,.15f),12,(0,.10f),(.14f,.18f),(.17f,.185f));
                 for(int i=0;i<6;i++){g.ink=i%2==0?Gold:Red;g.Lathe(V(.095f*Mathf.Cos(i),-.53f,.15f+.09f*Mathf.Sin(i)),8,(-.04f,.025f),(0,.057f),(.045f,.015f));}
             }
-            Art(n.armR,name+" wares",g);
+            if(wares) Art(n.armR,name+" wares",g);
+            return n;
         }
         static bool Patrol(Vector3 seed,Vector3 heading,out Vector3 start,out Vector3 end)
         {
