@@ -7,6 +7,6 @@ EditorBuildSettings:
   m_Scenes:
   - enabled: 1
     path: Assets/Scenes/CliffQuarter.unity
-    guid: 00000000000000000000000000000000
+    guid: ae2b6ca11a09840b6889b961b0e30957
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

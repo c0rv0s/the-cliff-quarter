@@ -6,7 +6,7 @@ Third-person parkour sandbox in a Mediterranean fantasy cliff city.
 
 Open the `TinyWorld` folder in Unity **6000.6.9f1**, load
 `Assets/Scenes/CliffQuarter.unity`, and press **Play**. Press **Enter** at the title screen.
-If you have a local Mac build, launch `Builds/The Cliff Quarter.app` directly.
+On Mac, open the installed **The Cliff Quarter** app from Applications.
 
 - **WASD / arrows:** move · **mouse:** look
 - **Shift:** sprint; run along or up nearby walls while airborne
@@ -50,18 +50,24 @@ bridges to the outer vineyards, orchards and pastures.
 
 ## Edit
 
-The earlier `RiverCity.unity` and `RiverCityBaseline.unity` scenes are preserved.
+`CliffQuarter.unity` is the only scene in the Unity project. The original
+baseline is archived in `Setup/Archive/`. The other prototypes are in commit
+`ab1eb1c`.
 
-`AgentScripts/BuildQuarter.cs` rebuilds the playable quarter and its generated
-meshes. The Tiny World menu rebuilds the quarter discoveries prefab. Save scene work before running it; manual edits to that generated scene
-will be replaced. After changing the coastline or canal layout, use **Tiny World → Bake navigable skiff water** in the playable scene. Traversal and glider tunables are on `WandererMotor`.
+The Tiny World menu rebuilds the quarter discoveries prefab. After changing the
+coastline or canal layout, use **Tiny World → Bake navigable skiff water** in the
+playable scene. Traversal and glider tunables are on `WandererMotor`.
+
+The legacy `AgentScripts/BuildQuarter.cs` generator requires
+`RiverCityCliffside.unity` and its `.meta` from commit `ab1eb1c`. Run the generator
+in a separate checkout because it overwrites the playable scene and its meshes.
 `AgentScripts/VerifyGlider.cs` checks flight in Play mode after you win the courier race.
 
 The wanderer is modeled in `TinyWorld/Art/build_wanderer.py` (Blender 5.2), which
 exports `Assets/Models/Wanderer.fbx`. Rebuild it with
-`Blender --background --python Art/build_wanderer.py`, then run
-`AgentScripts/Upgrade/ImportWanderer.cs` and `SetupWanderer.cs`. `WandererPose`
-animates the joints procedurally; gait and lean tunables are on that component.
+`Blender --background --python Art/build_wanderer.py`. The original import and
+rigging workflow is in `AgentScripts/Upgrade/` and targets the cliffside prototype.
+`WandererPose` animates the joints and exposes gait and lean tunables.
 
 See `Setup/CliffCityReport.md` and the approved images in `Setup/Concepts`.
 The city uses sculpted geometry and simple materials; textures and character

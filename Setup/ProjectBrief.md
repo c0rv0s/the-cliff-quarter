@@ -14,7 +14,7 @@ The player is a cloaked wanderer exploring freely, without combat or monetizatio
 
 Riverside → market stairs → rooftops → bridge → courtyard.
 Start with running, sprinting, jumping, camera collision, vaults, and ledge climbs.
-The initial compact district is preserved in RiverCity.unity.
+The initial compact district was built in `RiverCity.unity`.
 
 ## Mac target
 
@@ -30,7 +30,7 @@ The setup scene is not a playable parkour build. Movement is the next milestone.
 
 ## Current direction
 
-`RiverCityCliffside.unity` expands the sandbox around the approved concepts in
+`CliffQuarter.unity` expands the sandbox around the approved concepts in
 `Concepts/`. Continuous eroded cliff faces replace stepped terrain. Narrow
 streets, pocket plazas, stacked buildings, bridges, and gardens create vertical
 routes. Preserve the palette; prioritize scale and organic variety over a craft
